@@ -5,6 +5,15 @@ from pexels_api import API as PexelsAPI
 import config
 import tempfile
 from PIL import Image
+import os  # 引入 os 模块
+
+# 定义临时文件目录为项目根目录下的 'temp' 文件夹
+# os.path.abspath(__file__) 获取当前文件的绝对路径
+# os.path.dirname(...) 获取当前文件所在的目录 (ppt_builder)
+# os.path.join(..., '..') 上升一级到项目根目录
+# 最后拼接 'temp'
+TEMP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'temp')
+
 
 class ImageService:
     """处理图片获取、应用效果（如透明度）并保存为临时文件。"""
@@ -44,7 +53,7 @@ class ImageService:
         """从备用服务获取占位图片。"""
         try:
             logging.info(f"正在为 '{keyword}' 使用占位图片。")
-            placeholder_url = f"[https://placehold.co/1280x720.png?text=](https://placehold.co/1280x720.png?text=){keyword.replace(' ', '+')}&font=lato"
+            placeholder_url = f"https://placehold.co/1280x720.png?text={keyword.replace(' ', '+')}&font=lato"
             response = requests.get(placeholder_url, timeout=10)
             response.raise_for_status()
             return BytesIO(response.content)
@@ -63,18 +72,18 @@ class ImageService:
             return None
 
         try:
-            # 使用Pillow打开图片并确保它有Alpha通道
+            # **[修改]** 在创建临时文件前，确保目标目录存在
+            os.makedirs(TEMP_DIR, exist_ok=True)
+
             img = Image.open(image_stream).convert("RGBA")
 
-            # 如果需要，应用透明度
             if opacity < 1.0:
                 alpha = img.getchannel('A')
-                # 创建一个新的alpha通道，其值是原alpha值乘以透明度因子
                 new_alpha = alpha.point(lambda p: p * opacity)
                 img.putalpha(new_alpha)
 
-            # 创建一个带唯一名称的临时文件来保存处理后的图片
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
+            # **[修改]** 使用 dir 参数指定临时文件的创建目录
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.png', dir=TEMP_DIR) as temp_file:
                 img.save(temp_file, format='PNG')
                 logging.info(f"已为 '{keyword}' (透明度={opacity}) 生成并保存临时图片: {temp_file.name}")
                 return temp_file.name

@@ -151,7 +151,7 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
     1.  **布局多样性 (Layout Variety)**: 在生成 `pages` 数组时，**必须**有意识地混合使用多种不同的 `layout_type`。**严禁**连续超过两页使用完全相同的简单布局（如纯文本页面）。请交错使用图文、图表、引用、多栏等复杂布局。
     2.  **视觉元素丰富度 (Visual Richness)**: 除了标题页和结论页，**每一张内容页都应至少包含一个视觉元素** (`image`, `shape`, `chart`, `table`)，以避免页面单调。鼓励使用形状和图片进行创意组合，以增强视觉吸引力。
     3.  **设计系统贯穿始终 (Consistent Design System)**: 你在第一部分定义的 `color_palette` 和 `font_pairing` **必须**被应用到**所有页面**的**所有元素**上。所有颜色和字体都应源自这个全局设计系统，以保证视觉统一性。
-
+    4.  **字体选择的泛用性 (Font Generality)**: 确保你的字体是在大部分电脑上可用的，以免因字体不支持等原因导致无法正常显示。
     ---
     
     ### **第四部分：输出样例**
