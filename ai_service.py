@@ -69,8 +69,8 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
     
     1.  **`design_concept`**: (字符串) **必须用中文**为本次设计提炼一个高度概括、富有创意的核心设计理念。例如：“深海数据之境”、“都市脉搏与光影”、“墨韵书香”、“赛博朋克霓虹”等。
     2.  **`font_pairing`**: (对象) 定义全局字体搭配。
-        * `heading`: (字符串) 标题字体。例如: "Microsoft YaHei Heavy"。
-        * `body`: (字符串) 正文字体。例如: "Microsoft YaHei"。
+        * `heading`: (字符串) 标题字体。例如: "华文细黑"。
+        * `body`: (字符串) 正文字体。例如: "宋体"。
     3.  **`color_palette`**: (对象) 定义一个专业、和谐的色板。
         * `primary`: (字符串, Hex) 主色，用于关键元素、标题。
         * `secondary`: (字符串, Hex) 辅色，用于次要信息、图表。
@@ -256,8 +256,8 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
                  "content": "You are a world-class presentation designer. Your output must be a single, raw JSON object. You must strictly follow all instructions."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=64000,  # 确保有足够空间生成长内容
-            temperature=0.6  # 稍微降低温度以获取更稳定的结构化输出
+            max_tokens=32000,  # 确保有足够空间生成长内容
+            temperature=0.5  # 稍微降低温度以获取更稳定的结构化输出
         )
 
         response_content = response.choices[0].message.content
