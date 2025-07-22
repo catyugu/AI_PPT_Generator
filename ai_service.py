@@ -239,7 +239,8 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
                 {"role": "system", "content": "You are a world-class presentation designer. Your output must be a single, raw JSON object without any extra text or markdown. You must strictly follow all instructions."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.6,
+            max_tokens=8192,
+            temperature=0.5
         )
 
         response_content = response.choices[0].message.content
