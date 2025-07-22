@@ -1,9 +1,10 @@
 import logging
 from pptx import Presentation
-from pptx.dml.color import RGBColor # 为最终的回退方案导入
+from pptx.dml.color import RGBColor
 from ppt_builder.slide_renderer import SlideRenderer
-from ppt_builder.styles import PresentationStyle, px_to_emu, hex_to_rgb # 导入所需的 hex_to_rgb
+from ppt_builder.styles import PresentationStyle, px_to_emu, hex_to_rgb
 from image_service import ImageService
+
 
 class PresentationBuilder:
     """根据AI生成的计划构建完整的演示文稿。"""
@@ -16,19 +17,24 @@ class PresentationBuilder:
         self.slide_renderer = SlideRenderer(self.prs, self.image_service, self.style_manager)
         logging.info("PresentationBuilder已使用AI方案和StyleManager初始化。")
 
+    def _move_shape_to_background(self, master, shape):
+        """**[新功能]** 将一个形状移动到母版形状树的底部（视觉上的最底层）。"""
+        try:
+            spTree = master.shapes._spTree
+            # 将形状的XML元素从当前位置移除，并插入到列表的开头
+            spTree.insert(0, spTree.pop(spTree.index(shape.element)))
+            logging.info("已成功将背景图片移动到母版底层。")
+        except Exception as e:
+            logging.error(f"移动形状到背景时出错: {e}", exc_info=True)
+
     def _apply_master_slide_styles(self):
         """
         [已优化] 应用全局母版样式，如背景。
-        优化后的逻辑：
-        1. 优先使用 master_slide.background 中直接定义的图片。
-        2. 如果无图片，则使用 master_slide.background 中直接定义的颜色。
-        3. 如果以上均未定义，则使用 color_palette 中的 'background' 颜色作为默认。
-        4. 如果图片生成失败，也会回退到颜色背景。
+        现在使用正确的方法添加可拉伸的背景图片。
         """
         master = self.prs.slide_masters[0]
         master_data = self.plan.get('master_slide', {})
         background_info = master_data.get('background', {})
-        fill = master.background.fill
 
         try:
             # 优先级 1: 检查母版是否指定了背景图片
@@ -36,16 +42,22 @@ class PresentationBuilder:
                 logging.info(f"正在为母版背景搜索图片: '{keyword}'")
                 bg_image_path = self.image_service.generate_image(keyword)
                 if bg_image_path:
-                    fill.stretch(bg_image_path)
-                    logging.info(f"已将图片背景应用于母版: {bg_image_path}")
-                    return  # 背景设置成功，直接返回
+                    # **[已修复]** 正确的背景图片添加方式：添加为形状并置于底层
+                    picture = master.shapes.add_picture(
+                        bg_image_path,
+                        px_to_emu(0), px_to_emu(0),
+                        width=self.prs.slide_width,
+                        height=self.prs.slide_height
+                    )
+                    self._move_shape_to_background(master, picture)
+                    return  # 背景图片设置成功，直接返回
 
                 logging.warning("无法生成母版背景图片，将回退到颜色背景。")
 
             # 优先级 2: 检查母版是否指定了具体的背景颜色 (也是图片失败时的回退点)
+            fill = master.background.fill
             if specific_bg_color_hex := background_info.get('color'):
                 fill.solid()
-                # **[已修复]** 直接使用 hex_to_rgb 转换从计划中获取的颜色代码
                 fill.fore_color.rgb = hex_to_rgb(specific_bg_color_hex)
                 logging.info(f"已将母版背景设置为指定颜色: {specific_bg_color_hex}")
             # 优先级 3: 如果以上均未指定或失败，使用全局调色板的背景色
@@ -57,9 +69,8 @@ class PresentationBuilder:
         except Exception as e:
             logging.error(f"应用母版背景时出错: {e}", exc_info=True)
             # 终极保险措施：如果一切都失败了，设置为安全的白色背景
-            fill.solid()
-            fill.fore_color.rgb = RGBColor(255, 255, 255)
-
+            master.background.fill.solid()
+            master.background.fill.fore_color.rgb = RGBColor(255, 255, 255)
 
     def build_presentation(self, output_path: str):
         """构建并保存演示文稿。"""

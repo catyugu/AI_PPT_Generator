@@ -10,7 +10,7 @@ load_dotenv()
 ONEAPI_KEY = os.environ.get("ONEAPI_KEY", "YOUR_ONEAPI_KEY_HERE")
 ONEAPI_BASE_URL = os.environ.get("ONEAPI_BASE_URL", "http://127.0.0.1:3000/v1")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "YOUR_PEXELS_API_KEY_HERE")
-MODEL_NAME = "glm-4"  # 您可以换成更强大的模型，如 "gpt-4o"
+MODEL_NAME = "gemini-2.5-pro"  # 您可以换成更强大的模型，如 "gpt-4o"
 
 # --- 输出配置 ---
 OUTPUT_DIR = "AI_Generated_PPTs"

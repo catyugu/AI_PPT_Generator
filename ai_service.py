@@ -255,7 +255,7 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
                 {"role": "user", "content": prompt}
             ],
             max_tokens=64000,
-            temperature=0.6  # 稍微提高一点温度以增加创意性，但仍保持结构稳定
+            temperature=0.55  # 稍微提高一点温度以增加创意性，但仍保持结构稳定
         )
 
         response_content = response.choices[0].message.content
