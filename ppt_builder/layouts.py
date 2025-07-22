@@ -277,9 +277,8 @@ def create_timeline_slide(slide, page_data, style, prs):
 
 
 def create_team_intro_slide(slide, page_data, style, prs):
-    """Creates a slide to introduce team members."""
+    """[UPGRADED] Now handles both dict and simple string content for members."""
     add_standard_header(slide, page_data, style)
-
     members = page_data.get('content', [])
     if not isinstance(members, list): members = []
 
@@ -292,6 +291,14 @@ def create_team_intro_slide(slide, page_data, style, prs):
     for i, member in enumerate(members[:cols]):
         left = (i * col_width)
 
+        # [NEW] Check the format of 'member'
+        if isinstance(member, dict):
+            name = member.get('name', '姓名')
+            title = member.get('title', '职位')
+        else:  # Fallback for simple string content
+            name = str(member)
+            title = ''
+
         img_placeholder = slide.shapes.add_shape(MSO_SHAPE.OVAL, left + col_width / 2 - Inches(1), Inches(2.5),
                                                  Inches(2), Inches(2))
         img_placeholder.fill.solid()
@@ -300,7 +307,7 @@ def create_team_intro_slide(slide, page_data, style, prs):
 
         name_box = slide.shapes.add_textbox(left, Inches(4.7), col_width, Inches(0.8))
         p_name = name_box.text_frame.paragraphs[0]
-        p_name.text = member.get('name', '姓名')
+        p_name.text = name  # Safely use the parsed name
         p_name.font.name = style.font_heading
         p_name.font.size = Pt(24)
         p_name.font.bold = True
@@ -308,34 +315,34 @@ def create_team_intro_slide(slide, page_data, style, prs):
 
         title_box = slide.shapes.add_textbox(left, Inches(5.5), col_width, Inches(1.5))
         p_title = title_box.text_frame.paragraphs[0]
-        p_title.text = member.get('title', '职位')
+        p_title.text = title  # Safely use the parsed title
         p_title.font.name = style.font_body
         p_title.font.size = Pt(16)
         p_title.alignment = PP_ALIGN.CENTER
 
 
 def create_icon_grid_slide(slide, page_data, style, prs):
-    """Creates a grid of items, each with an icon and text."""
+    """[UPGRADED] Now handles both dict and simple string content for grid items."""
     add_standard_header(slide, page_data, style)
-
     items = page_data.get('content', [])
     if not isinstance(items, list): items = []
-
-    cols = 3
-    rows = 2
     if not items: return
 
-    col_width = Inches(5)
-    row_height = Inches(3)
-    start_left = Inches(0.5)
-    start_top = Inches(2.5)
+    cols, rows = 3, 2
+    col_width, row_height = Inches(5), Inches(3)
+    start_left, start_top = Inches(0.5), Inches(2.5)
 
     for i, item in enumerate(items[:cols * rows]):
         row = i // cols
         col = i % cols
-
         left = start_left + col * col_width
         top = start_top + row * row_height
+
+        # [NEW] Check the format of 'item'
+        if isinstance(item, dict):
+            text = item.get('text', '项目说明')
+        else:  # Fallback for simple string content
+            text = str(item)
 
         icon_shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left + Inches(1.75), top, Inches(1.5),
                                             Inches(1.5))
@@ -345,30 +352,34 @@ def create_icon_grid_slide(slide, page_data, style, prs):
 
         text_box = slide.shapes.add_textbox(left, top + Inches(1.7), col_width, Inches(1))
         p = text_box.text_frame.paragraphs[0]
-        p.text = item.get('text', '项目说明')
+        p.text = text  # Safely use the parsed text
         p.font.name = style.font_body
         p.font.size = Pt(18)
         p.alignment = PP_ALIGN.CENTER
         text_box.text_frame.word_wrap = True
 
-
 def create_process_flow_slide(slide, page_data, style, prs):
-    """Creates a horizontal process flow with boxes and arrows."""
+    """[UPGRADED] Now handles both dict and simple string content for process steps."""
     add_standard_header(slide, page_data, style)
-
     steps = page_data.get('content', [])
     if not isinstance(steps, list) or not steps: return
 
     num_steps = len(steps)
-    total_width = Inches(15)
-    gap_width = Inches(0.5)
-
+    total_width, gap_width = Inches(15), Inches(0.5)
     box_width = (total_width - (num_steps - 1) * gap_width) / num_steps
-    box_height = Inches(3)
-    top = Inches(4)
+    box_height, top = Inches(3), Inches(4)
 
     for i, step_data in enumerate(steps[:5]):
         left = Inches(0.5) + i * (box_width + gap_width)
+
+        # [NEW] Check the format of 'step_data'
+        if isinstance(step_data, dict):
+            step_text = step_data.get('step', f'步骤 {i + 1}')
+            desc_text = step_data.get('description', '')
+        else:  # Fallback for simple string content
+            parts = str(step_data).split(':', 1)
+            step_text = parts[0]
+            desc_text = parts[1].strip() if len(parts) > 1 else ''
 
         box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, box_width, box_height)
         box.fill.solid()
@@ -381,7 +392,7 @@ def create_process_flow_slide(slide, page_data, style, prs):
         tf.word_wrap = True
 
         p_step = tf.paragraphs[0]
-        p_step.text = step_data.get('step', f'步骤 {i + 1}')
+        p_step.text = step_text  # Safely use parsed text
         p_step.font.name = style.font_heading
         p_step.font.bold = True
         p_step.font.size = Pt(20)
@@ -389,7 +400,7 @@ def create_process_flow_slide(slide, page_data, style, prs):
         p_step.alignment = PP_ALIGN.CENTER
 
         p_desc = tf.add_paragraph()
-        p_desc.text = step_data.get('description', '')
+        p_desc.text = desc_text  # Safely use parsed text
         p_desc.font.name = style.font_body
         p_desc.font.size = Pt(14)
         p_desc.font.color.rgb = RGBColor(220, 220, 220)
@@ -402,7 +413,6 @@ def create_process_flow_slide(slide, page_data, style, prs):
             arrow.fill.solid()
             arrow.fill.fore_color.rgb = style.accent
             arrow.line.fill.background()
-
 
 def create_thank_you_slide(slide, page_data, style, prs):
     """Creates a dedicated 'Thank You' slide that doesn't require content."""
