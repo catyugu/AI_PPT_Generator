@@ -1,88 +1,83 @@
-# image_service.py
 import logging
 import requests
 from io import BytesIO
 from pexels_api import API as PexelsAPI
 import config
-import os
 import tempfile
-from PIL import Image # Import Pillow for image manipulation
+from PIL import Image
 
 class ImageService:
-    """
-    Handles image fetching from Pexels or a fallback service,
-    applies opacity if specified, and saves them to temporary files
-    for use in the presentation.
-    """
+    """处理图片获取、应用效果（如透明度）并保存为临时文件。"""
+
     def __init__(self):
         self.pexels_client = None
+        pexels_key = config.get_api_key("PEXELS_API_KEY")
+        if pexels_key and pexels_key != "YOUR_PEXELS_API_KEY_HERE":
+            try:
+                self.pexels_client = PexelsAPI(pexels_key)
+                logging.info("Pexels客户端初始化成功。")
+            except Exception as e:
+                logging.error(f"初始化Pexels客户端失败: {e}")
+        else:
+            logging.warning("未配置Pexels API密钥，将使用占位图片服务。")
+
+    def _fetch_from_pexels(self, keyword: str) -> BytesIO | None:
+        """从Pexels获取图片。"""
+        if not self.pexels_client:
+            return None
         try:
-            if config.PEXELS_API_KEY and config.PEXELS_API_KEY != "YOUR_PEXELS_API_KEY_HERE":
-                self.pexels_client = PexelsAPI(config.PEXELS_API_KEY)
-                logging.info("Pexels client initialized.")
-            else:
-                logging.warning("Pexels API key not configured. Using placeholders.")
+            logging.info(f"正在从Pexels搜索 '{keyword}'...")
+            search_results = self.pexels_client.search(keyword, page=1, results_per_page=1)
+            if photos := search_results.get('photos'):
+                photo_url = photos[0].get('src', {}).get('large2x')
+                if photo_url:
+                    response = requests.get(photo_url, timeout=20)
+                    response.raise_for_status()
+                    return BytesIO(response.content)
+            logging.warning(f"未找到 '{keyword}' 的Pexels图片。")
+            return None
         except Exception as e:
-            logging.error(f"Failed to initialize Pexels client: {e}")
-            self.pexels_client = None
+            logging.error(f"Pexels搜索 '{keyword}' 失败: {e}。")
+            return None
+
+    def _fetch_from_fallback(self, keyword: str) -> BytesIO | None:
+        """从备用服务获取占位图片。"""
+        try:
+            logging.info(f"正在为 '{keyword}' 使用占位图片。")
+            placeholder_url = f"[https://placehold.co/1280x720.png?text=](https://placehold.co/1280x720.png?text=){keyword.replace(' ', '+')}&font=lato"
+            response = requests.get(placeholder_url, timeout=10)
+            response.raise_for_status()
+            return BytesIO(response.content)
+        except Exception as e:
+            logging.error(f"获取 '{keyword}' 的占位图片失败: {e}")
+            return None
 
     def generate_image(self, keyword: str, opacity: float = 1.0) -> str | None:
         """
-        Fetches an image from Pexels or a fallback service, applies opacity,
-        saves it to a temporary file, and returns the path to that file.
-        Opacity should be a float between 0.0 (fully transparent) and 1.0 (fully opaque).
+        获取图片，应用透明度，保存到临时文件并返回路径。
+        透明度范围从 0.0 (完全透明) 到 1.0 (完全不透明)。
         """
-        image_stream = None
-        if self.pexels_client:
-            try:
-                logging.info(f"Searching Pexels for '{keyword}'...")
-                search_results = self.pexels_client.search(keyword, page=1, results_per_page=1)
-                photos_list = search_results.get('photos', [])
+        image_stream = self._fetch_from_pexels(keyword) or self._fetch_from_fallback(keyword)
 
-                if photos_list:
-                    photo_url = photos_list[0].get('src', {}).get('large2x')
-                    if photo_url:
-                        response = requests.get(photo_url, timeout=20)
-                        response.raise_for_status()
-                        image_stream = BytesIO(response.content)
-
-                if not image_stream:
-                    logging.warning(f"No Pexels image found for '{keyword}'. Trying fallback.")
-
-            except Exception as e:
-                logging.error(f"Pexels search failed for '{keyword}': {e}. Trying fallback.")
-
-        # Fallback to placeholder if Pexels fails or is not configured
         if not image_stream:
-            try:
-                logging.info(f"Using placeholder image for '{keyword}'.")
-                placeholder_url = f"https://placehold.co/1920x1080.png?text={keyword.replace(' ', '+')}&font=lato"
-                response = requests.get(placeholder_url, timeout=10)
-                response.raise_for_status()
-                image_stream = BytesIO(response.content)
-            except Exception as e:
-                logging.error(f"Fallback placeholder failed for '{keyword}': {e}")
-                return None
+            return None
 
-        if image_stream:
-            try:
-                # Open image with Pillow
-                img = Image.open(image_stream).convert("RGBA") # Ensure it has an alpha channel
+        try:
+            # 使用Pillow打开图片并确保它有Alpha通道
+            img = Image.open(image_stream).convert("RGBA")
 
-                # Apply opacity if less than 1.0
-                if opacity < 1.0:
-                    alpha = img.split()[-1] # Get the alpha channel
-                    alpha = alpha.point(lambda p: p * opacity) # Apply opacity to alpha
-                    img.putalpha(alpha) # Put the modified alpha back
+            # 如果需要，应用透明度
+            if opacity < 1.0:
+                alpha = img.getchannel('A')
+                # 创建一个新的alpha通道，其值是原alpha值乘以透明度因子
+                new_alpha = alpha.point(lambda p: p * opacity)
+                img.putalpha(new_alpha)
 
-                # Create a temporary file to save the image
-                temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.png')
-                img.save(temp_file, format='PNG') # Save with alpha channel
-                temp_file.close()
-                logging.info(f"Saved image for '{keyword}' (opacity={opacity}) to temporary file: {temp_file.name}")
+            # 创建一个带唯一名称的临时文件来保存处理后的图片
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.png') as temp_file:
+                img.save(temp_file, format='PNG')
+                logging.info(f"已为 '{keyword}' (透明度={opacity}) 生成并保存临时图片: {temp_file.name}")
                 return temp_file.name
-            except Exception as e:
-                logging.error(f"Error processing or saving image to temporary file: {e}")
-                return None
-        return None
-
+        except Exception as e:
+            logging.error(f"处理或保存图片到临时文件时出错: {e}", exc_info=True)
+            return None

@@ -2,35 +2,25 @@
 import os
 from dotenv import load_dotenv
 
-# Load .env file variables into environment
+# 加载 .env 文件变量到环境中
 load_dotenv()
 
-# --- API Configuration ---
-# It's highly recommended to use environment variables for security
+# --- API 配置 ---
+# 强烈建议使用环境变量以保障安全
 ONEAPI_KEY = os.environ.get("ONEAPI_KEY", "YOUR_ONEAPI_KEY_HERE")
 ONEAPI_BASE_URL = os.environ.get("ONEAPI_BASE_URL", "http://127.0.0.1:3000/v1")
 PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "YOUR_PEXELS_API_KEY_HERE")
-MODEL_NAME = "gemini-2.5-flash"  # Or use a more powerful model like "gpt-4o"
+MODEL_NAME = "glm-4"  # 您可以换成更强大的模型，如 "gpt-4o"
 
-# --- Output Configuration ---
+# --- 输出配置 ---
 OUTPUT_DIR = "AI_Generated_PPTs"
 
-def get_env_variable(var_name: str) -> str | None:
-    """
-    从.env文件或环境变量中获取变量值。
-    """
+# --- Helper Functions (可选，保持清晰) ---
+def get_env_variable(var_name: str, default: str = None) -> str | None:
+    """从.env文件或环境变量中安全地获取变量值。"""
     load_dotenv()
-    return os.getenv(var_name)
+    return os.getenv(var_name, default)
 
-def get_openai_api_key() -> str | None:
-    """
-    获取OpenAI API密钥。
-    """
-    return get_env_variable("OPENAI_API_KEY")
-
-def get_pexels_api_key() -> str | None:
-    """
-    获取Pexels API密钥。
-    """
-    return get_env_variable("PEXELS_API_KEY")
-
+def get_api_key(key_name: str) -> str | None:
+    """获取指定API密钥的通用函数。"""
+    return get_env_variable(key_name)

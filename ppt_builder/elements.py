@@ -1,14 +1,15 @@
 import logging
-from pptx.util import Inches, Pt
+from pptx.util import Pt
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.chart.data import ChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.dml.color import RGBColor
-from pptx.table import Table
+# **[修复]** 导入正确的段落对齐枚举
+from pptx.enum.text import PP_ALIGN
 from ppt_builder.styles import px_to_emu, hex_to_rgb, PresentationStyle
 
 # 形状类型映射
-shape_type_map = {
+SHAPE_TYPE_MAP = {
     'rectangle': MSO_SHAPE.RECTANGLE,
     'oval': MSO_SHAPE.OVAL,
     'triangle': MSO_SHAPE.ISOSCELES_TRIANGLE,
@@ -16,88 +17,124 @@ shape_type_map = {
     'rounded_rectangle': MSO_SHAPE.ROUNDED_RECTANGLE,
 }
 
+# **[修复]** 创建一个健壮的对齐方式映射
+ALIGNMENT_MAP = {
+    'LEFT': PP_ALIGN.LEFT,
+    'CENTER': PP_ALIGN.CENTER,
+    'RIGHT': PP_ALIGN.RIGHT,
+    'JUSTIFY': PP_ALIGN.JUSTIFY,
+}
+
 
 def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
-    x, y, width, height = map(px_to_emu,
-                              [element_data['x'], element_data['y'], element_data['width'], element_data['height']])
-    style = element_data.get('style', {})
-
+    """添加文本框并应用全局或局部样式。"""
     try:
+        x, y, width, height = map(px_to_emu, [
+            element_data.get('x', 50), element_data.get('y', 50),
+            element_data.get('width', 1180), element_data.get('height', 100)
+        ])
+
         txBox = slide.shapes.add_textbox(x, y, width, height)
         tf = txBox.text_frame
         tf.word_wrap = True
+        tf.clear()  # 清除默认段落
+
         p = tf.paragraphs[0]
         p.text = element_data.get('content', '')
 
         # 应用样式
-        font = p.font
+        style = element_data.get('style', {})
         font_style = style.get('font', {})
+        font = p.font
+
         font.name = style_manager.body_font if font_style.get('type') == 'body' else style_manager.heading_font
         font.size = Pt(font_style.get('size', 18))
         font.bold = font_style.get('bold', False)
         font.italic = font_style.get('italic', False)
-        font.color.rgb = hex_to_rgb(
-            font_style.get('color', '#000000')) if 'color' in font_style else style_manager.text_color
 
-        logging.info(f"Added text box: '{p.text[:20]}...'")
+        # 颜色：优先使用局部颜色，否则使用全局文本颜色
+        font.color.rgb = hex_to_rgb(font_style['color']) if 'color' in font_style else style_manager.text_color
+
+        # **[修复]** 使用映射来安全地设置对齐方式
+        if alignment_str := style.get('alignment'):
+            # 将AI提供的字符串（如'LEFT', 'center'）转换为大写，然后在映射中查找
+            p.alignment = ALIGNMENT_MAP.get(alignment_str.upper(), PP_ALIGN.LEFT)
+        else:
+            # 如果AI未提供对齐方式，则默认为左对齐
+            p.alignment = PP_ALIGN.LEFT
+
+        logging.info(f"添加文本框: '{p.text[:30]}...'")
     except Exception as e:
-        logging.error(f"Error adding text box: {e}", exc_info=True)
+        # 提供更详细的错误日志
+        logging.error(f"添加文本框时出错: {e} | 元素数据: {element_data}", exc_info=True)
 
 
 def add_image(slide, image_path: str, element_data: dict):
-    x, y, width, height = map(px_to_emu,
-                              [element_data['x'], element_data['y'], element_data['width'], element_data['height']])
+    """添加图片。"""
     try:
+        x, y, width, height = map(px_to_emu, [
+            element_data.get('x', 0), element_data.get('y', 0),
+            element_data.get('width', 1280), element_data.get('height', 720)
+        ])
         slide.shapes.add_picture(image_path, x, y, width, height)
-        logging.info(f"Added image from path: {image_path}")
+        logging.info(f"从路径添加图片: {image_path}")
     except Exception as e:
-        logging.error(f"Error adding image {image_path}: {e}", exc_info=True)
+        logging.error(f"添加图片 {image_path} 时出错: {e}", exc_info=True)
 
 
 def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
-    x, y, width, height = map(px_to_emu,
-                              [element_data['x'], element_data['y'], element_data['width'], element_data['height']])
-    shape_type_str = element_data.get('shape_type', 'rectangle').lower()
-    shape_type = shape_type_map.get(shape_type_str, MSO_SHAPE.RECTANGLE)
-    style = element_data.get('style', {})
-
+    """添加形状并应用样式。"""
     try:
+        x, y, width, height = map(px_to_emu, [
+            element_data.get('x', 50), element_data.get('y', 50),
+            element_data.get('width', 200), element_data.get('height', 200)
+        ])
+        shape_type_str = element_data.get('shape_type', 'rectangle').lower()
+        shape_type = SHAPE_TYPE_MAP.get(shape_type_str, MSO_SHAPE.RECTANGLE)
+        style = element_data.get('style', {})
+
         shape = slide.shapes.add_shape(shape_type, x, y, width, height)
         fill = shape.fill
         line = shape.line
 
+        # 填充样式
         if 'gradient' in style:
             grad_info = style['gradient']
             fill.gradient()
             for i, hex_color in enumerate(grad_info.get('colors', [])):
                 if i < len(fill.gradient_stops):
                     fill.gradient_stops[i].color.rgb = hex_to_rgb(hex_color)
-            logging.info("Applied gradient fill to shape.")
+            logging.info("为形状应用了渐变填充。")
         elif 'fill_color' in style and style['fill_color'] is not None:
             fill.solid()
             fill.fore_color.rgb = hex_to_rgb(style['fill_color'])
         else:
-            fill.background()
+            fill.background()  # 无填充
 
-        if 'border_color' in style and style['border_color'] is not None:
-            line.color.rgb = hex_to_rgb(style['border_color'])
-            line.width = Pt(style.get('border_width', 1))
+        # 边框样式
+        if border_style := style.get('border'):
+            line.color.rgb = hex_to_rgb(border_style.get('color', '#000000'))
+            line.width = Pt(border_style.get('width', 1))
         else:
-            line.fill.background()
+            line.fill.background()  # 无边框
 
-        logging.info(f"Added {shape_type_str} shape.")
+        logging.info(f"添加 {shape_type_str} 形状。")
     except Exception as e:
-        logging.error(f"Error adding shape: {e}", exc_info=True)
+        logging.error(f"添加形状时出错: {e}", exc_info=True)
 
 
 def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
-    x, y, width, height = map(px_to_emu,
-                              [element_data['x'], element_data['y'], element_data['width'], element_data['height']])
-    chart_type_str = element_data.get('chart_type', 'bar').upper()
-    chart_type_map = {'BAR': XL_CHART_TYPE.BAR_CLUSTERED, 'PIE': XL_CHART_TYPE.PIE, 'LINE': XL_CHART_TYPE.LINE}
-    chart_type = chart_type_map.get(chart_type_str, XL_CHART_TYPE.BAR_CLUSTERED)
-
+    """添加图表并使用主题颜色进行样式化。"""
     try:
+        x, y, width, height = map(px_to_emu, [
+            element_data.get('x', 100), element_data.get('y', 150),
+            element_data.get('width', 1080), element_data.get('height', 450)
+        ])
+
+        chart_type_str = element_data.get('chart_type', 'bar').upper()
+        chart_type_map = {'BAR': XL_CHART_TYPE.COLUMN_CLUSTERED, 'PIE': XL_CHART_TYPE.PIE, 'LINE': XL_CHART_TYPE.LINE}
+        chart_type = chart_type_map.get(chart_type_str, XL_CHART_TYPE.COLUMN_CLUSTERED)
+
         chart_data_info = element_data.get('data', {})
         chart_data = ChartData()
         chart_data.categories = chart_data_info.get('categories', [])
@@ -107,72 +144,73 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
         graphic_frame = slide.shapes.add_chart(chart_type, x, y, width, height, chart_data)
         chart = graphic_frame.chart
 
-        plot = chart.plots[0]
-        if hasattr(plot, 'series'):
-            for i, series in enumerate(plot.series):
-                color = style_manager.get_chart_color(i)
+        # **[关键优化]** 使用样式管理器为图表系列应用主题颜色
+        if hasattr(chart.plots[0], 'series'):
+            for i, series in enumerate(chart.plots[0].series):
                 series.format.fill.solid()
-                series.format.fill.fore_color.rgb = color
+                series.format.fill.fore_color.rgb = style_manager.get_chart_color(i)
 
         if chart.has_legend:
             chart.legend.position = XL_LEGEND_POSITION.BOTTOM
             chart.legend.include_in_layout = False
 
-        logging.info(f"Added styled {chart_type_str} chart.")
+        logging.info(f"添加已应用主题样式的 {chart_type_str} 图表。")
     except Exception as e:
-        logging.error(f"Error adding chart: {e}", exc_info=True)
+        logging.error(f"添加图表时出错: {e}", exc_info=True)
 
 
 def add_table(slide, element_data: dict, style_manager: PresentationStyle):
-    # [关键修复] 使用 .get() 提供默认值，防止因AI未提供坐标而产生KeyError
-    x_px = element_data.get('x', 100)
-    y_px = element_data.get('y', 150)
-    width_px = element_data.get('width', 1080)
-    height_px = element_data.get('height', 420)
-
-    if 'x' not in element_data:
-        logging.warning("Table element missing coordinates. Using default position and size.")
-
-    x, y, width, height = map(px_to_emu, [x_px, y_px, width_px, height_px])
-
-    headers = element_data.get('headers', [])
-    rows_data = element_data.get('rows', [])
-
-    if not headers or not rows_data:
-        logging.warning("Table data missing headers or rows. Skipping.")
-        return
-
-    num_rows = len(rows_data) + 1
-    num_cols = len(headers)
-
+    """添加表格并应用样式。"""
     try:
+        x, y, width, height = map(px_to_emu, [
+            element_data.get('x', 100), element_data.get('y', 150),
+            element_data.get('width', 1080), element_data.get('height', 420)
+        ])
+
+        headers = element_data.get('headers', [])
+        rows_data = element_data.get('rows', [])
+        if not headers or not rows_data:
+            logging.warning("表格数据缺少表头或行数据，已跳过。")
+            return
+
+        num_rows, num_cols = len(rows_data) + 1, len(headers)
         shape = slide.shapes.add_table(num_rows, num_cols, x, y, width, height)
         table = shape.table
 
-        table.columns[0].width = width
+        # 设置列宽和行高 (可以根据需要进行更复杂的计算)
         for c in range(num_cols):
             table.columns[c].width = int(width / num_cols)
         for r in range(num_rows):
             table.rows[r].height = int(height / num_rows)
 
+        style = element_data.get('style', {})
+        header_color = hex_to_rgb(style.get('header_color')) if 'header_color' in style else style_manager.primary
+        row_colors = [hex_to_rgb(c) for c in style.get('row_colors', [])]
+
+        # 填充表头
         for i, header in enumerate(headers):
             cell = table.cell(0, i)
             cell.text = header
             cell.fill.solid()
-            cell.fill.fore_color.rgb = style_manager.primary
+            cell.fill.fore_color.rgb = header_color
             p = cell.text_frame.paragraphs[0]
-            p.font.color.rgb = RGBColor(255, 255, 255)
+            p.font.color.rgb = RGBColor(255, 255, 255)  # 白色文字
             p.font.bold = True
             p.font.name = style_manager.heading_font
 
+        # 填充数据行
         for r, row_data in enumerate(rows_data):
             for c, cell_data in enumerate(row_data):
                 cell = table.cell(r + 1, c)
                 cell.text = str(cell_data)
+                # 应用斑马条纹
+                if row_colors:
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = row_colors[r % len(row_colors)]
                 p = cell.text_frame.paragraphs[0]
                 p.font.color.rgb = style_manager.text_color
                 p.font.name = style_manager.body_font
 
-        logging.info(f"Added table with {num_rows - 1} rows.")
+        logging.info(f"添加了包含 {len(rows_data)} 行的表格。")
     except Exception as e:
-        logging.error(f"Error adding table: {e}", exc_info=True)
+        logging.error(f"添加表格时出错: {e}", exc_info=True)

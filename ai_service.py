@@ -11,16 +11,10 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # 初始化OneAPI客户端
 try:
-    # 直接使用从 config.py 导入的变量
     if not ONEAPI_KEY or ONEAPI_KEY == "YOUR_ONEAPI_KEY_HERE":
-        raise ValueError("ONEAPI_KEY not found or not set properly in config.py or .env file.")
-
-    client = OpenAI(
-        api_key=ONEAPI_KEY,
-        base_url=ONEAPI_BASE_URL
-    )
-    logging.info(f"OpenAI client initialized for OneAPI at {ONEAPI_BASE_URL}")
-
+        raise ValueError("ONEAPI_KEY未在config.py或.env文件中正确设置。")
+    client = OpenAI(api_key=ONEAPI_KEY, base_url=ONEAPI_BASE_URL)
+    logging.info(f"OpenAI客户端已为OneAPI初始化，目标地址: {ONEAPI_BASE_URL}")
 except ValueError as e:
     logging.error(e)
     client = None
@@ -29,22 +23,26 @@ except ValueError as e:
 def _extract_json_from_response(text: str) -> str | None:
     """从可能包含markdown和注释的字符串中提取并清理JSON对象。"""
     try:
-        text = re.sub(r'```json\s*', '', text)
+        # 移除Markdown代码块标记和可选的'json'语言标识符
+        text = re.sub(r'```json\s*', '', text, flags=re.IGNORECASE)
         text = re.sub(r'```', '', text)
-        text = text.strip()
+
+        # 找到第一个'{'和最后一个'}'，以确定JSON对象的边界
         start_index = text.find('{')
         end_index = text.rfind('}')
+
         if start_index != -1 and end_index != -1 and end_index > start_index:
             json_block = text[start_index:end_index + 1]
-            lines = json_block.splitlines()
-            cleaned_lines = [line for line in lines if not line.strip().startswith('//')]
-            cleaned_json = "\n".join(cleaned_lines)
-            return cleaned_json
+            # 移除行内和行末的JS风格注释
+            json_block = re.sub(r'//.*', '', json_block)
+            # 移除多行注释 (/* ... */)
+            json_block = re.sub(r'/\*.*?\*/', '', json_block, flags=re.DOTALL)
+            return json_block
+        logging.warning("在AI响应中未找到有效的JSON对象边界。")
         return None
     except Exception as e:
-        logging.error(f"Error while extracting and cleaning JSON: {e}")
+        logging.error(f"提取和清理JSON时出错: {e}")
         return None
-
 
 def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
     """使用OneAPI为演示文稿生成详细的JSON计划。"""
@@ -256,21 +254,28 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
                  "content": "You are a world-class presentation designer. Your output must be a single, raw JSON object. You must strictly follow all instructions."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=32000,  # 确保有足够空间生成长内容
-            temperature=0.5  # 稍微降低温度以获取更稳定的结构化输出
+            max_tokens=64000,
+            temperature=0.6  # 稍微提高一点温度以增加创意性，但仍保持结构稳定
         )
 
         response_content = response.choices[0].message.content
         if response_content:
-            logging.info("Successfully received presentation plan from AI.")
+            logging.info("已成功从AI接收到演示文稿方案。")
             json_string = _extract_json_from_response(response_content)
             if json_string:
-                cleaned_json = re.sub(r',\s*([}\]])', r'\1', json_string)
-                return json.loads(cleaned_json)
+                # 在加载前移除可能导致错误的尾随逗号
+                cleaned_json_string = re.sub(r',\s*([}\]])', r'\1', json_string)
+                return json.loads(cleaned_json_string)
+            else:
+                logging.error("从AI响应中提取JSON失败。")
+                return None
 
-        logging.error("Failed to extract valid JSON from AI response.")
+        logging.error("AI响应内容为空。")
         return None
 
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON解码失败: {e}。原始响应片段: '{json_string[:500]}...'")
+        return None
     except Exception as e:
-        logging.error(f"An error occurred while communicating with OneAPI: {e}", exc_info=True)
+        logging.error(f"与OneAPI通信时发生严重错误: {e}", exc_info=True)
         return None
