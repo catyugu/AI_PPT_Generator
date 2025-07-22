@@ -1,6 +1,8 @@
 # ai_service.py
 import json
 import logging
+import re
+
 from openai import OpenAI
 import config
 
@@ -15,19 +17,37 @@ except Exception as e:
     logging.error(f"Failed to initialize OpenAI client: {e}")
     client = None
 
+
 def _extract_json_from_response(text: str) -> str | None:
     """
-    从可能包含额外文本的字符串中提取出JSON对象。
+    Extracts and cleans a JSON object from a string that may contain markdown and comments.
     """
     try:
+        # 1. Remove markdown code block markers
+        text = re.sub(r'```json\s*', '', text)
+        text = re.sub(r'```', '', text)
+        text = text.strip()
+
+        # 2. Find the first '{' and the last '}' to get the JSON block
         start_index = text.find('{')
         end_index = text.rfind('}')
-        if start_index != -1 and end_index != -1 and end_index > start_index:
-            return text[start_index:end_index+1]
-        logging.warning("Could not find a valid JSON object in the AI response.")
-        return None
+
+        if start_index == -1 or end_index == -1 or end_index < start_index:
+            logging.warning("Could not find a valid JSON object in the AI response.")
+            return None
+
+        json_block = text[start_index:end_index + 1]
+
+        # 3. Remove single-line comments (//...)
+        # We process line by line to avoid issues with comments in strings
+        lines = json_block.splitlines()
+        cleaned_lines = [line for line in lines if not line.strip().startswith('//')]
+        cleaned_json = "\n".join(cleaned_lines)
+
+        return cleaned_json
+
     except Exception as e:
-        logging.error(f"Error while extracting JSON: {e}")
+        logging.error(f"Error while extracting and cleaning JSON: {e}", exc_info=True)
         return None
 
 
