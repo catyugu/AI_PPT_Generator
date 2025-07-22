@@ -1,9 +1,8 @@
 # ppt_builder/charts.py
 import logging
-
 from pptx.chart.data import CategoryChartData
 from pptx.enum.chart import XL_CHART_TYPE
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 
 
 def add_bar_chart(slide, chart_data, style):
@@ -15,7 +14,7 @@ def add_bar_chart(slide, chart_data, style):
 
         chart_data_obj = CategoryChartData()
         chart_data_obj.categories = categories
-        chart_data_obj.add_series(series_name, values)
+        chart_data_obj.add_series(series_name, tuple(values))  # Values must be a tuple
 
         x, y, cx, cy = Inches(2), Inches(2.5), Inches(12), Inches(5.5)
         graphic_frame = slide.shapes.add_chart(
@@ -24,13 +23,14 @@ def add_bar_chart(slide, chart_data, style):
         chart = graphic_frame.chart
 
         # Style the chart
-        chart.has_legend = False
-        value_axis = chart.value_axis
-        value_axis.major_gridlines.format.line.fill.background()
-        plot = chart.plots[0]
-        plot.vary_by_categories = True  # Use different colors for each bar
+        chart.has_legend = True
+        chart.legend.include_in_layout = False
+        chart.plots[0].vary_by_categories = True
+        chart.category_axis.tick_labels.font.size = Pt(14)
+        chart.value_axis.tick_labels.font.size = Pt(14)
+        chart.value_axis.has_major_gridlines = False
 
     except Exception as e:
-        # Fallback to simple text if chart creation fails
         logging.error(f"Could not create chart: {e}")
-        # (You could add a text box with an error message here)
+        tb = slide.shapes.add_textbox(Inches(1), Inches(3), Inches(14), Inches(5))
+        tb.text = f"Error: Invalid data provided for chart.\nDetails: {e}"

@@ -21,7 +21,7 @@ LAYOUT_REGISTRY = {
     'process_flow': layouts.create_process_flow_slide,
     'icon_grid': layouts.create_icon_grid_slide,
     'team_intro': layouts.create_team_intro_slide,
-    'thank_you': layouts.create_cover_slide,
+    'thank_you': layouts.create_thank_you_slide,
 }
 
 

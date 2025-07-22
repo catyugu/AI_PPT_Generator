@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Page Number Configuration ---
-NUM_PAGES = 8 # <-- Set the desired number of pages here
+NUM_PAGES = 16 # <-- Set the desired number of pages here
 
 # --- API Configuration ---
 # It's highly recommended to use environment variables for security

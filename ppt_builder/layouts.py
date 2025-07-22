@@ -19,11 +19,26 @@ def _get_sanitized_content_list(content):
     return []
 
 
+def _get_alignment_enum(align_str, default=PP_ALIGN.LEFT):
+    """Converts a string to a PP_ALIGN enum."""
+    return {
+        'left': PP_ALIGN.LEFT,
+        'center': PP_ALIGN.CENTER,
+        'right': PP_ALIGN.RIGHT
+    }.get(str(align_str).lower(), default)
+
+
 def create_cover_slide(slide, page_data, style, prs):
-    """Creates a modern cover slide with a full-bleed image and overlay."""
+    """[UPGRADED] Cover slide now supports variable opacity and text alignment."""
+    layout_options = page_data.get('layout_options', {})
+
     keyword = page_data.get('image_keyword', 'abstract technology')
     add_image_with_fallback(slide, keyword, 0, 0, prs.slide_width, prs.slide_height)
-    add_overlay(slide, prs.slide_width, prs.slide_height, style.primary, 0.3)
+
+    opacity = layout_options.get('overlay_opacity', 0.4)
+    add_overlay(slide, prs.slide_width, prs.slide_height, style.primary, opacity)
+
+    alignment = _get_alignment_enum(layout_options.get('text_alignment'), default=PP_ALIGN.LEFT)
 
     title_box = slide.shapes.add_textbox(Inches(1), Inches(3), Inches(14), Inches(3))
     p = title_box.text_frame.paragraphs[0]
@@ -32,14 +47,17 @@ def create_cover_slide(slide, page_data, style, prs):
     p.font.size = Pt(66)
     p.font.bold = True
     p.font.color.rgb = RGBColor(255, 255, 255)
+    p.alignment = alignment
 
-    subtitle_text = _get_sanitized_content_list(page_data.get('content', [style.design_concept]))[0]
+    content_list = _get_sanitized_content_list(page_data.get('content'))
+    subtitle_text = content_list[0] if content_list else style.design_concept
     subtitle_box = slide.shapes.add_textbox(Inches(1), Inches(4.75), Inches(14), Inches(1))
-    p = subtitle_box.text_frame.paragraphs[0]
-    p.text = subtitle_text
-    p.font.name = style.font_body
-    p.font.size = Pt(24)
-    p.font.color.rgb = RGBColor(220, 220, 220)
+    p_sub = subtitle_box.text_frame.paragraphs[0]
+    p_sub.text = subtitle_text
+    p_sub.font.name = style.font_body
+    p_sub.font.size = Pt(24)
+    p_sub.font.color.rgb = RGBColor(220, 220, 220)
+    p_sub.alignment = alignment
 
 
 def create_section_header_slide(slide, page_data, style, prs):
@@ -59,34 +77,83 @@ def create_section_header_slide(slide, page_data, style, prs):
 
 
 def create_title_content_slide(slide, page_data, style, prs):
-    """Creates a standard slide with a title and bullet points."""
+    """[UPGRADED] Title/Content slide now supports multiple columns."""
     add_standard_header(slide, page_data, style)
-    body_box = slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(14), Inches(6))
-    tf = body_box.text_frame
-    tf.word_wrap = True
+    layout_options = page_data.get('layout_options', {})
 
     content_list = _get_sanitized_content_list(page_data.get('content'))
-    for point in content_list:
-        p = tf.add_paragraph()
-        p.text = point
-        p.font.name = style.font_body
-        p.font.size = Pt(22)
-        p.font.color.rgb = style.text
-        p.level = 0
-        p.space_before = Pt(12)
+    if not content_list:
+        return
+
+    num_columns = layout_options.get('columns', 1)
+
+    if not isinstance(num_columns, int) or not (1 <= num_columns <= 3):
+        num_columns = 1
+
+    if num_columns == 1:
+        body_box = slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(14), Inches(6))
+        tf = body_box.text_frame
+        tf.word_wrap = True
+        for point in content_list:
+            p = tf.add_paragraph()
+            p.text = point
+            p.font.name = style.font_body
+            p.font.size = Pt(22)
+            p.font.color.rgb = style.text
+            p.level = 0
+            p.space_before = Pt(12)
+    else:
+        col_width = (prs.slide_width - Inches(2)) / num_columns
+        points_per_col = (len(content_list) + num_columns - 1) // num_columns
+
+        for i in range(num_columns):
+            col_left = Inches(1) + i * col_width
+            start_index = i * points_per_col
+            end_index = start_index + points_per_col
+            col_points = content_list[start_index:end_index]
+
+            if not col_points: continue
+
+            col_box = slide.shapes.add_textbox(col_left, Inches(2.5), col_width - Inches(0.5), Inches(6))
+            tf = col_box.text_frame
+            tf.word_wrap = True
+            for point in col_points:
+                p = tf.add_paragraph()
+                p.text = point
+                p.font.name = style.font_body
+                p.font.size = Pt(20)
+                p.font.color.rgb = style.text
+                p.level = 0
+                p.space_before = Pt(10)
 
 
 def create_image_text_split_slide(slide, page_data, style, prs):
-    """Creates a slide with an image on one side and text on the other."""
+    """[UPGRADED] Split slide now supports variable ratios and image positions."""
     add_standard_header(slide, page_data, style)
+    layout_options = page_data.get('layout_options', {})
 
-    image_on_left = "left" in page_data.get('design_notes', 'right').lower()
-    img_w, txt_w = Inches(7.5), Inches(7)
+    image_position = layout_options.get('image_position', 'right')
+    ratio_str = layout_options.get('split_ratio', '50/50')
+
+    try:
+        r1, r2 = map(int, ratio_str.split('/'))
+        total_ratio = r1 + r2
+        if total_ratio == 0: raise ValueError()
+    except (ValueError, IndexError, TypeError):
+        r1, r2 = 50, 50
+        total_ratio = 100
+
+    content_width = prs.slide_width - Inches(2)
     gap = Inches(0.5)
 
-    if image_on_left:
-        img_left, txt_left = Inches(0.5), Inches(0.5) + img_w + gap
+    img_ratio_w = (content_width - gap) * (r1 / total_ratio)
+    txt_ratio_w = (content_width - gap) * (r2 / total_ratio)
+
+    if image_position == 'left':
+        img_w, txt_w = img_ratio_w, txt_ratio_w
+        img_left, txt_left = Inches(1), Inches(1) + img_w + gap
     else:
+        txt_w, img_w = img_ratio_w, txt_ratio_w
         txt_left, img_left = Inches(1), Inches(1) + txt_w + gap
 
     add_image_with_fallback(slide, page_data.get('image_keyword', 'business'), img_left, Inches(2.2), img_w, Inches(6))
@@ -163,7 +230,7 @@ def create_bar_chart_slide(slide, page_data, style, prs):
     else:
         logging.warning("Bar chart content is not a valid dictionary.")
         tb = slide.shapes.add_textbox(Inches(1), Inches(3), Inches(14), Inches(5))
-        tb.text = "Error: Invalid data provided for chart."
+        tb.text = "错误：图表数据无效。"
 
 
 def create_timeline_slide(slide, page_data, style, prs):
@@ -219,20 +286,18 @@ def create_team_intro_slide(slide, page_data, style, prs):
     num_members = len(members)
     if num_members == 0: return
 
-    cols = min(num_members, 4)  # Max 4 members for clarity
+    cols = min(num_members, 4)
     col_width = prs.slide_width / cols
 
     for i, member in enumerate(members[:cols]):
         left = (i * col_width)
 
-        # Placeholder for member photo
         img_placeholder = slide.shapes.add_shape(MSO_SHAPE.OVAL, left + col_width / 2 - Inches(1), Inches(2.5),
                                                  Inches(2), Inches(2))
         img_placeholder.fill.solid()
         img_placeholder.fill.fore_color.rgb = style.accent
         img_placeholder.line.fill.background()
 
-        # Name
         name_box = slide.shapes.add_textbox(left, Inches(4.7), col_width, Inches(0.8))
         p_name = name_box.text_frame.paragraphs[0]
         p_name.text = member.get('name', '姓名')
@@ -241,7 +306,6 @@ def create_team_intro_slide(slide, page_data, style, prs):
         p_name.font.bold = True
         p_name.alignment = PP_ALIGN.CENTER
 
-        # Title/Description
         title_box = slide.shapes.add_textbox(left, Inches(5.5), col_width, Inches(1.5))
         p_title = title_box.text_frame.paragraphs[0]
         p_title.text = member.get('title', '职位')
@@ -259,8 +323,7 @@ def create_icon_grid_slide(slide, page_data, style, prs):
 
     cols = 3
     rows = 2
-    num_items = len(items)
-    if num_items == 0: return
+    if not items: return
 
     col_width = Inches(5)
     row_height = Inches(3)
@@ -274,14 +337,12 @@ def create_icon_grid_slide(slide, page_data, style, prs):
         left = start_left + col * col_width
         top = start_top + row * row_height
 
-        # Icon placeholder
         icon_shape = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left + Inches(1.75), top, Inches(1.5),
                                             Inches(1.5))
         icon_shape.fill.solid()
         icon_shape.fill.fore_color.rgb = style.primary
         icon_shape.line.fill.background()
 
-        # Text
         text_box = slide.shapes.add_textbox(left, top + Inches(1.7), col_width, Inches(1))
         p = text_box.text_frame.paragraphs[0]
         p.text = item.get('text', '项目说明')
@@ -306,10 +367,9 @@ def create_process_flow_slide(slide, page_data, style, prs):
     box_height = Inches(3)
     top = Inches(4)
 
-    for i, step_data in enumerate(steps[:5]):  # Max 5 steps for clarity
+    for i, step_data in enumerate(steps[:5]):
         left = Inches(0.5) + i * (box_width + gap_width)
 
-        # Step Box
         box = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, box_width, box_height)
         box.fill.solid()
         box.fill.fore_color.rgb = style.primary
@@ -335,7 +395,6 @@ def create_process_flow_slide(slide, page_data, style, prs):
         p_desc.font.color.rgb = RGBColor(220, 220, 220)
         p_desc.alignment = PP_ALIGN.CENTER
 
-        # Connecting Arrow (if not the last step)
         if i < num_steps - 1:
             arrow_left = left + box_width
             arrow = slide.shapes.add_shape(MSO_SHAPE.RIGHT_ARROW, arrow_left, top + box_height / 2 - Inches(0.25),
@@ -343,3 +402,32 @@ def create_process_flow_slide(slide, page_data, style, prs):
             arrow.fill.solid()
             arrow.fill.fore_color.rgb = style.accent
             arrow.line.fill.background()
+
+
+def create_thank_you_slide(slide, page_data, style, prs):
+    """Creates a dedicated 'Thank You' slide that doesn't require content."""
+    keyword = page_data.get('image_keyword', 'abstract farewell')
+    add_image_with_fallback(slide, keyword, 0, 0, prs.slide_width, prs.slide_height)
+    add_overlay(slide, prs.slide_width, prs.slide_height, style.primary, 0.4)
+
+    title_box = slide.shapes.add_textbox(Inches(1), Inches(3.5), Inches(14), Inches(2))
+    title_box.text_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+
+    p = title_box.text_frame.paragraphs[0]
+    p.text = page_data.get('title', '谢谢观看')
+    p.font.name = style.font_heading
+    p.font.size = Pt(66)
+    p.font.bold = True
+    p.font.color.rgb = RGBColor(255, 255, 255)
+    p.alignment = PP_ALIGN.CENTER
+
+    content_list = _get_sanitized_content_list(page_data.get('content'))
+    if content_list:
+        subtitle_text = "\n".join(content_list)
+        subtitle_box = slide.shapes.add_textbox(Inches(1), Inches(5.5), Inches(14), Inches(1.5))
+        p_sub = subtitle_box.text_frame.paragraphs[0]
+        p_sub.text = subtitle_text
+        p_sub.font.name = style.font_body
+        p_sub.font.size = Pt(20)
+        p_sub.font.color.rgb = RGBColor(220, 220, 220)
+        p_sub.alignment = PP_ALIGN.CENTER

@@ -5,7 +5,7 @@ import config
 from ai_service import generate_presentation_plan
 from ppt_builder.presentation import build_presentation
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', force=True)
 
 
 def process_theme(theme: str):
