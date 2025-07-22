@@ -1,67 +1,72 @@
 # ppt_builder/presentation.py
-import logging
 from pptx import Presentation
-from pptx.util import Inches
-from config import DEFAULT_PPT_WIDTH_INCHES, DEFAULT_PPT_HEIGHT_INCHES
-from ppt_builder.styles import PresentationStyle
-import ppt_builder.layouts as layouts
+from pptx.dml.color import RGBColor
+from pptx.util import Pt
+import logging
 
-# The Layout Registry (or Router)
-# This dictionary maps the `page_type` string from the AI to the actual function
-# that builds the slide. This is the key to making the system extensible.
-LAYOUT_REGISTRY = {
-    'cover': layouts.create_cover_slide,
-    'section_header': layouts.create_section_header_slide,
-    'title_content': layouts.create_title_content_slide,
-    'image_text_split': layouts.create_image_text_split_slide,
-    'full_bleed_image_quote': layouts.create_full_bleed_image_quote_slide,
-    'three_points_icons': layouts.create_three_points_icons_slide,
-    'bar_chart': layouts.create_bar_chart_slide,
-    'timeline': layouts.create_timeline_slide,
-    'process_flow': layouts.create_process_flow_slide,
-    'icon_grid': layouts.create_icon_grid_slide,
-    'team_intro': layouts.create_team_intro_slide,
-    'thank_you': layouts.create_thank_you_slide,
-}
+from ppt_builder.slide_renderer import SlideRenderer
+from image_service import ImageService # Import the ImageService class
 
-
-def build_presentation(data: dict, output_path: str):
+class PresentationBuilder:
     """
-    Constructs a presentation using a style object and the layout registry.
+    Builds a PowerPoint presentation based on a detailed AI-generated plan.
+    This builder orchestrates the creation of slides and the addition of elements
+    using the SlideRenderer.
     """
-    if not data or 'pages' not in data:
-        logging.error("AI-generated data is incomplete or invalid. Aborting.")
-        return
+    def __init__(self, plan: dict):
+        self.plan = plan
+        self.prs = Presentation()
+        # Set standard slide size (16:9 aspect ratio, roughly 10x7.5 inches at 96 DPI)
+        # Default is usually 10x7.5 inches, which corresponds to 914400 EMUs x 685800 EMUs
+        # python-pptx uses EMUs (English Metric Units) internally.
+        # The AI's pixel coordinates are based on a 914x685 pixel canvas.
+        # The default slide size in python-pptx is usually 10 inches x 7.5 inches,
+        # which is 914400 EMUs x 685800 EMUs. This aligns well with a 96 DPI assumption
+        # (96 pixels/inch * 10 inches = 960 pixels, but PowerPoint's internal pixel
+        # mapping for shapes can be a bit different. The AI is using 914x685 as a reference).
+        # We'll rely on the default slide size and the px_to_emu conversion in elements.py.
 
-    prs = Presentation()
-    prs.slide_width = Inches(DEFAULT_PPT_WIDTH_INCHES)
-    prs.slide_height = Inches(DEFAULT_PPT_HEIGHT_INCHES)
-    style = PresentationStyle(data)
+        self.image_service = ImageService() # Initialize ImageService
+        self.slide_renderer = SlideRenderer(self.prs, self.image_service)
+        logging.info("PresentationBuilder initialized with AI plan.")
 
-    for i, page_data in enumerate(data['pages']):
-        slide_layout = prs.slide_layouts[6]  # Use a blank layout
-        slide = prs.slides.add_slide(slide_layout)
+    def _apply_global_styles(self):
+        """Applies global styles like font pairing and color palette."""
+        color_palette = self.plan.get('color_palette', {})
+        # This is a simplified application. For full theme control,
+        # you'd need to modify the presentation's theme XML.
+        # Here, we'll just log the colors for now as direct application
+        # to the overall presentation theme is complex without theme modification.
+        if color_palette:
+            logging.info(f"Applying color palette: {color_palette}")
+            # Example: Set background color for all slides (this is a basic approach)
+            # This would need to be done per slide or by modifying the master slide.
+            # For now, we'll just log this.
+            pass
 
-        # Set background color for every slide
-        bg_fill = slide.background.fill
-        bg_fill.solid()
-        bg_fill.fore_color.rgb = style.background
+        font_pairing = self.plan.get('font_pairing', {})
+        if font_pairing:
+            logging.info(f"Applying font pairing: {font_pairing}")
+            # Similar to colors, applying global fonts requires theme modification
+            # or setting fonts per text box, which is handled by elements.py.
+            pass
 
-        page_type = page_data.get('page_type')
-        layout_func = LAYOUT_REGISTRY.get(page_type)
+    def build_presentation(self, output_path: str):
+        """
+        Builds the presentation by iterating through the plan's pages
+        and rendering each slide.
+        """
+        try:
+            self._apply_global_styles()
 
-        if layout_func:
-            try:
-                logging.info(f"Creating slide {i + 1} with layout: '{page_type}'")
-                layout_func(slide, page_data, style, prs)
-            except Exception as e:
-                logging.error(f"Failed to create slide {i + 1} ('{page_type}'): {e}", exc_info=True)
-        else:
-            logging.warning(f"No layout function found for page_type '{page_type}'. Using default.")
-            layouts.create_title_content_slide(slide, page_data, style, prs)
+            pages = self.plan.get('pages', [])
+            for i, page_data in enumerate(pages):
+                logging.info(f"Building page {i+1}: {page_data.get('page_title', 'Untitled')}")
+                self.slide_renderer.render_slide(page_data)
 
-    try:
-        prs.save(output_path)
-        logging.info(f"Presentation saved to: {output_path}")
-    except Exception as e:
-        logging.error(f"Failed to save presentation to '{output_path}': {e}")
+            self.prs.save(output_path)
+            logging.info(f"Presentation successfully saved to {output_path}")
+        except Exception as e:
+            logging.error(f"Error building presentation: {e}", exc_info=True)
+            raise # Re-raise to be caught in main.py for user feedback
+
