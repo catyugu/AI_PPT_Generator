@@ -1,64 +1,61 @@
-# ai_service.py
 import json
 import logging
 import re
 
 from openai import OpenAI
-import config
 
-# --- Initialize Client ---
+from config import ONEAPI_KEY, ONEAPI_BASE_URL, MODEL_NAME
+
+# 配置日志
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# 初始化OneAPI客户端
 try:
+    # 直接使用从 config.py 导入的变量
+    if not ONEAPI_KEY or ONEAPI_KEY == "YOUR_ONEAPI_KEY_HERE":
+        raise ValueError("ONEAPI_KEY not found or not set properly in config.py or .env file.")
+
     client = OpenAI(
-        api_key=config.ONEAPI_KEY,
-        base_url=config.ONEAPI_BASE_URL,
+        api_key=ONEAPI_KEY,
+        base_url=ONEAPI_BASE_URL
     )
-    logging.info("OpenAI client initialized.")
-except Exception as e:
-    logging.error(f"Failed to initialize OpenAI client: {e}")
+    logging.info(f"OpenAI client initialized for OneAPI at {ONEAPI_BASE_URL}")
+
+except ValueError as e:
+    logging.error(e)
     client = None
 
 
 def _extract_json_from_response(text: str) -> str | None:
-    """
-    Extracts and cleans a JSON object from a string that may contain markdown and comments.
-    """
+    """从可能包含markdown和注释的字符串中提取并清理JSON对象。"""
     try:
-        # 1. Remove markdown code block markers
         text = re.sub(r'```json\s*', '', text)
         text = re.sub(r'```', '', text)
         text = text.strip()
-
-        # 2. Find the first '{' and the last '}' to get the JSON block
         start_index = text.find('{')
         end_index = text.rfind('}')
-
-        if start_index == -1 or end_index == -1 or end_index < start_index:
-            logging.warning("Could not find a valid JSON object in the AI response.")
-            return None
-
-        json_block = text[start_index:end_index + 1]
-
-        # 3. Remove single-line comments (//...)
-        # We process line by line to avoid issues with comments in strings
-        lines = json_block.splitlines()
-        cleaned_lines = [line for line in lines if not line.strip().startswith('//')]
-        cleaned_json = "\n".join(cleaned_lines)
-
-        return cleaned_json
-
+        if start_index != -1 and end_index != -1 and end_index > start_index:
+            json_block = text[start_index:end_index + 1]
+            lines = json_block.splitlines()
+            cleaned_lines = [line for line in lines if not line.strip().startswith('//')]
+            cleaned_json = "\n".join(cleaned_lines)
+            return cleaned_json
+        return None
     except Exception as e:
-        logging.error(f"Error while extracting and cleaning JSON: {e}", exc_info=True)
+        logging.error(f"Error while extracting and cleaning JSON: {e}")
         return None
 
 
 def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
-    """
-    使用OpenAI API生成演示文稿的详细JSON计划。
-    """
+    """使用OneAPI为演示文稿生成详细的JSON计划。"""
     if not client:
-        logging.error("OpenAI client not initialized. Cannot generate presentation plan.")
+        logging.error("OneAPI client not initialized.")
         return None
 
+    # 直接使用从 config.py 导入的模型名称
+    logging.info(f"Requesting plan from model '{MODEL_NAME}' via OneAPI...")
+
+    # 使用我们最终优化的、带有“多样性强制”规则的提示词
     prompt = f"""
     你是一位世界顶级的演示文稿（PPT）设计大师和信息架构专家。你精通平面设计、版式理论、色彩心理学和视觉传达。你的任务是根据用户提供的主题，设计一份兼具专业性、设计感和视觉冲击力的演示文稿方案。
     
@@ -252,15 +249,15 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
     """
 
     try:
-        logging.info("Generating presentation plan from AI...")
         response = client.chat.completions.create(
-            model=config.MODEL_NAME,
+            model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": "You are a world-class presentation designer. Your output must be a single, raw JSON object without any extra text or markdown. You must strictly follow all instructions."},
+                {"role": "system",
+                 "content": "You are a world-class presentation designer. Your output must be a single, raw JSON object. You must strictly follow all instructions."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=8192,
-            temperature=0.5
+            max_tokens=64000,  # 确保有足够空间生成长内容
+            temperature=0.6  # 稍微降低温度以获取更稳定的结构化输出
         )
 
         response_content = response.choices[0].message.content
@@ -268,19 +265,12 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
             logging.info("Successfully received presentation plan from AI.")
             json_string = _extract_json_from_response(response_content)
             if json_string:
-                return json.loads(json_string)
-            else:
-                logging.error("Could not extract a valid JSON object from the AI's response.")
-                logging.debug(f"Raw response was: {response_content}")
-                return None
-        else:
-            logging.error("Received empty response from AI.")
-            return None
+                cleaned_json = re.sub(r',\s*([}\]])', r'\1', json_string)
+                return json.loads(cleaned_json)
 
-    except json.JSONDecodeError as e:
-        logging.error(f"Failed to parse JSON response from AI: {e}")
-        logging.error(f"Raw response was: {response_content}")
+        logging.error("Failed to extract valid JSON from AI response.")
         return None
+
     except Exception as e:
-        logging.error(f"An error occurred while communicating with OpenAI: {e}", exc_info=True)
+        logging.error(f"An error occurred while communicating with OneAPI: {e}", exc_info=True)
         return None
