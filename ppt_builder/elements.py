@@ -26,11 +26,9 @@ ALIGNMENT_MAP = {
     'RIGHT': PP_ALIGN.RIGHT,
     'JUSTIFY': PP_ALIGN.JUSTIFY,
 }
-
-
 def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
     """
-    [已更新] 添加文本框，并智能处理JSON样式和内嵌的Markdown加粗。
+    [已更新] 添加文本框，智能处理新旧JSON格式，并支持内嵌的Markdown加粗。
     """
     try:
         x, y, width, height = map(px_to_emu, [
@@ -44,33 +42,44 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
         tf.clear()  # 清除默认段落
 
         p = tf.paragraphs[0]
-        content = element_data.get('content', '')
+
+        # --- 核心修改开始 ---
+        raw_content = element_data.get('content', '')
         style = element_data.get('style', {})
+
+        # 1. 兼容性处理：检查content字段是字典还是字符串
+        if isinstance(raw_content, dict):
+            # 如果是字典 (新格式)，提取其中的'text'和'style'
+            content = raw_content.get('text', '')
+            # 合并样式：如果content内部有style，把它合并到主style中
+            if 'style' in raw_content:
+                style.update(raw_content.get('style', {}))
+        else:
+            # 如果是字符串 (旧格式)，直接使用
+            content = raw_content
+        # --- 核心修改结束 ---
+
         font_style = style.get('font', {})
 
         # 优先使用局部颜色，否则使用全局文本颜色
         default_font_color = hex_to_rgb(font_style['color']) if 'color' in font_style else style_manager.text_color
 
-        # 智能处理加粗
+        # 2. 智能处理加粗 (您的原有逻辑保持不变)
         # case 1: 文本中包含 '**'
         if '**' in content:
-            # 例如: "这是**加粗**的文字" -> 会被分割成 ['这是', '加粗', '的文字']
             parts = re.split(r'\*\*(.*?)\*\*', content)
             for i, part in enumerate(parts):
-                if not part: continue  # 跳过由分割产生的空字符串
+                if not part: continue
 
                 run = p.add_run()
                 run.text = part
                 font = run.font
 
-                # 应用通用字体样式
                 font.name = style_manager.body_font if font_style.get('type') == 'body' else style_manager.heading_font
                 font.size = Pt(font_style.get('size', 18))
                 font.italic = font_style.get('italic', False)
                 font.color.rgb = default_font_color
 
-                # 奇数部分的文本 (被**包裹的) 应该被加粗
-                # 同时，也尊重JSON中全局的bold设置
                 is_bold_from_json = font_style.get('bold', False)
                 is_bold_from_markdown = (i % 2 == 1)
                 font.bold = is_bold_from_json or is_bold_from_markdown
@@ -86,7 +95,7 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
             font.italic = font_style.get('italic', False)
             font.color.rgb = default_font_color
 
-        # 设置段落对齐
+        # 3. 设置段落对齐 (您的原有逻辑保持不变)
         if alignment_str := style.get('alignment'):
             p.alignment = ALIGNMENT_MAP.get(alignment_str.upper(), PP_ALIGN.LEFT)
         else:
@@ -94,8 +103,8 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
 
         logging.info(f"添加文本框: '{content[:30]}...'")
     except Exception as e:
-        logging.error(f"添加文本框时出错: {e} | 元素数据: {element_data}", exc_info=True)
-
+        # 错误日志现在会打印修复前的原始数据，方便调试
+        logging.error(f"添加文本框时出错: {e} | 原始元素数据: {element_data}", exc_info=True)
 
 def add_image(slide, image_path: str, element_data: dict):
     """添加图片。"""
@@ -182,6 +191,11 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
             chart.legend.position = XL_LEGEND_POSITION.BOTTOM
             chart.legend.include_in_layout = False
 
+        plot = chart.plots[0]
+        plot.has_data_labels = True
+        data_labels = plot.data_labels
+        data_labels.font.size = Pt(10)
+        data_labels.font.color.rgb = style_manager.text_color
         logging.info(f"添加已应用主题样式的 {chart_type_str} 图表。")
     except Exception as e:
         logging.error(f"添加图表时出错: {e}", exc_info=True)

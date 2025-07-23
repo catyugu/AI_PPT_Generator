@@ -109,7 +109,7 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
         * `type`: "image"
         * `image_keyword`: (字符串) **必须是英文**的图片搜索关键词，越具体越好。
         * `style`: (对象, 可选)
-            * `opacity`: (数字, 0.0-1.0) 透明度，0.0表示完全不透明，1.0表示完全透明。
+            * `opacity`: (数字, 0.0-1.0) 透明度，0.0表示完全透明，1.0表示完全不透明。
             * `border`: (对象) 边框。包含 `color` (Hex) 和 `width` (px)。
             * `crop`: (对象, 可选) 裁剪。`{{ "shape": "circle" }}` 可将图片裁剪为圆形。
     
@@ -148,13 +148,22 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
     
     为了确保整个演示文稿都保持高水准，你必须遵守以下核心准则：
     
-    1.  **布局多样性 (Layout Variety)**: 在生成 `pages` 数组时，**必须**有意识地混合使用多种不同的 `layout_type`。**严禁**连续超过两页使用完全相同的简单布局（如纯文本页面）。请交错使用图文、图表、引用、多栏等复杂布局。
+    1.  **布局多样性 (Layout Variety)**: 在生成 `pages` 数组时，**必须**有意识地混合使用多种不同的 `layout_type`。**严禁**连续超过两页使用完全相同的简单布局（如纯文本页面）。请交错使用图文、图表、多栏等复杂布局。
     2.  **视觉元素丰富度 (Visual Richness)**: 除了标题页和结论页，**每一张内容页都应至少包含一个视觉元素** (`image`, `shape`, `chart`, `table`)，以避免页面单调。鼓励使用形状和图片进行创意组合，以增强视觉吸引力。
     3.  **设计系统贯穿始终 (Consistent Design System)**: 你在第一部分定义的 `color_palette` 和 `font_pairing` **必须**被应用到**所有页面**的**所有元素**上。所有颜色和字体都应源自这个全局设计系统，以保证视觉统一性。
-    4.  **字体选择的泛用性 (Font Generality)**: 确保你的字体是在大部分电脑上可用的，以免因字体不支持等原因导致无法正常显示。
+    4.  **字体选择的泛用性 (Font Generality)**: 确保你的字体是在大部分电脑上可用的，且应该是美观、清晰的。
     5.  **切勿在`content`字段的文本中使用任何Markdown语法**（例如 `**文字**` 或 `*`）。
     6.  **所有的文本样式（如加粗）都必须通过`style`对象中的对应属性（如 `"bold": true`）来定义。**
     7.  **你的PPT页数应该严格与用户要求的页数一致**
+    8.  在设计每个页面时，请尝试运用一种专业的设计手法。例如：
+    - **裁切蒙版 (Clipping Mask)**: 将图片置于一个形状或大号文字的轮廓之内。
+    - **三分法 (Rule of Thirds)**: 将核心元素沿着3x3网格的线条或交点进行布局。
+    - **负空间 (Negative Space)**: 巧妙地利用留白来突出视觉焦点。
+    - **视觉层次 (Visual Hierarchy)**: 让最重要的元素在视觉上最突出。
+    9.  **设计质量规则**:
+        a. **严禁创建仅包含纯色填充（尤其是黑色、深蓝色等暗色）而没有任何实质性文字或图像内容的“过渡页”或“空白页”**。
+        b. **每一页都必须承载明确的信息**，至少要有一个标题或有意义的图片。一张幻灯片不能只是一个覆盖全屏的深色矩形。
+
     ---
     
     ### **第四部分：输出样例**
@@ -229,7 +238,7 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
           "layout_type": "full_screen_image_with_quote",  
           "elements": [  
             {{ "type": "image", "x": 0, "y": 0, "width": 1280, "height": 720, "image_keyword": "lonely boat on calm water black and white", "style": {{ "opacity": 0.8 }} }},  
-            {{ "type": "shape", "shape_type": "rectangle", "x": 0, "y": 0, "width": 1280, "height": 720, "style": {{ "gradient": {{ "type": "linear", "angle": 90, "colors": ["#00000000", "#000000CC"] }} }} }},  
+            {{ "type": "shape", "shape_type": "rectangle", "x": 0, "y": 0, "width": 1280, "height": 720, "style": {{ "gradient": {{ "type": "linear", "angle": 90, "colors": ["#FFFFFF", "#FFFFCC"] }} }} }},  
             {{ "type": "text_box", "x": 100, "y": 500, "width": 600, "height": 150, "content": "“天地有大美而不言”", "style": {{ "font": {{ "type": "heading", "size": 44, "color": "#FFFFFF", "italic": true }}, "alignment": "LEFT" }} }}  
           ]  
         }},  
