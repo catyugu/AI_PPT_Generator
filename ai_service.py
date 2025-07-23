@@ -152,6 +152,9 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
     2.  **视觉元素丰富度 (Visual Richness)**: 除了标题页和结论页，**每一张内容页都应至少包含一个视觉元素** (`image`, `shape`, `chart`, `table`)，以避免页面单调。鼓励使用形状和图片进行创意组合，以增强视觉吸引力。
     3.  **设计系统贯穿始终 (Consistent Design System)**: 你在第一部分定义的 `color_palette` 和 `font_pairing` **必须**被应用到**所有页面**的**所有元素**上。所有颜色和字体都应源自这个全局设计系统，以保证视觉统一性。
     4.  **字体选择的泛用性 (Font Generality)**: 确保你的字体是在大部分电脑上可用的，以免因字体不支持等原因导致无法正常显示。
+    5.  **切勿在`content`字段的文本中使用任何Markdown语法**（例如 `**文字**` 或 `*`）。
+    6.  **所有的文本样式（如加粗）都必须通过`style`对象中的对应属性（如 `"bold": true`）来定义。**
+
     ---
     
     ### **第四部分：输出样例**
@@ -254,7 +257,7 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
                  "content": "You are a world-class presentation designer. Your output must be a single, raw JSON object. You must strictly follow all instructions."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=64000,
+            max_tokens=12800,
             temperature=0.55  # 稍微提高一点温度以增加创意性，但仍保持结构稳定
         )
 

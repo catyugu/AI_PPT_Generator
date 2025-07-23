@@ -1,4 +1,6 @@
 import logging
+import re
+
 from pptx.util import Pt
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.chart.data import ChartData
@@ -27,7 +29,9 @@ ALIGNMENT_MAP = {
 
 
 def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
-    """添加文本框并应用全局或局部样式。"""
+    """
+    [已更新] 添加文本框，并智能处理JSON样式和内嵌的Markdown加粗。
+    """
     try:
         x, y, width, height = map(px_to_emu, [
             element_data.get('x', 50), element_data.get('y', 50),
@@ -40,32 +44,56 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
         tf.clear()  # 清除默认段落
 
         p = tf.paragraphs[0]
-        p.text = element_data.get('content', '')
-
-        # 应用样式
+        content = element_data.get('content', '')
         style = element_data.get('style', {})
         font_style = style.get('font', {})
-        font = p.font
 
-        font.name = style_manager.body_font if font_style.get('type') == 'body' else style_manager.heading_font
-        font.size = Pt(font_style.get('size', 18))
-        font.bold = font_style.get('bold', False)
-        font.italic = font_style.get('italic', False)
+        # 优先使用局部颜色，否则使用全局文本颜色
+        default_font_color = hex_to_rgb(font_style['color']) if 'color' in font_style else style_manager.text_color
 
-        # 颜色：优先使用局部颜色，否则使用全局文本颜色
-        font.color.rgb = hex_to_rgb(font_style['color']) if 'color' in font_style else style_manager.text_color
+        # 智能处理加粗
+        # case 1: 文本中包含 '**'
+        if '**' in content:
+            # 例如: "这是**加粗**的文字" -> 会被分割成 ['这是', '加粗', '的文字']
+            parts = re.split(r'\*\*(.*?)\*\*', content)
+            for i, part in enumerate(parts):
+                if not part: continue  # 跳过由分割产生的空字符串
 
-        # **[修复]** 使用映射来安全地设置对齐方式
+                run = p.add_run()
+                run.text = part
+                font = run.font
+
+                # 应用通用字体样式
+                font.name = style_manager.body_font if font_style.get('type') == 'body' else style_manager.heading_font
+                font.size = Pt(font_style.get('size', 18))
+                font.italic = font_style.get('italic', False)
+                font.color.rgb = default_font_color
+
+                # 奇数部分的文本 (被**包裹的) 应该被加粗
+                # 同时，也尊重JSON中全局的bold设置
+                is_bold_from_json = font_style.get('bold', False)
+                is_bold_from_markdown = (i % 2 == 1)
+                font.bold = is_bold_from_json or is_bold_from_markdown
+
+        # case 2: 文本中不含 '**'，按原逻辑处理
+        else:
+            run = p.add_run()
+            run.text = content
+            font = run.font
+            font.name = style_manager.body_font if font_style.get('type') == 'body' else style_manager.heading_font
+            font.size = Pt(font_style.get('size', 18))
+            font.bold = font_style.get('bold', False)
+            font.italic = font_style.get('italic', False)
+            font.color.rgb = default_font_color
+
+        # 设置段落对齐
         if alignment_str := style.get('alignment'):
-            # 将AI提供的字符串（如'LEFT', 'center'）转换为大写，然后在映射中查找
             p.alignment = ALIGNMENT_MAP.get(alignment_str.upper(), PP_ALIGN.LEFT)
         else:
-            # 如果AI未提供对齐方式，则默认为左对齐
             p.alignment = PP_ALIGN.LEFT
 
-        logging.info(f"添加文本框: '{p.text[:30]}...'")
+        logging.info(f"添加文本框: '{content[:30]}...'")
     except Exception as e:
-        # 提供更详细的错误日志
         logging.error(f"添加文本框时出错: {e} | 元素数据: {element_data}", exc_info=True)
 
 

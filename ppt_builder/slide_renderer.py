@@ -1,4 +1,6 @@
 import logging
+import os
+
 from pptx import Presentation
 from ppt_builder import elements
 from ppt_builder.styles import PresentationStyle, px_to_emu
@@ -19,35 +21,48 @@ class SlideRenderer:
         self.background_image_path = background_image_path
         logging.info("SlideRenderer已使用样式管理器和背景信息初始化。")
 
-    def _add_background_image(self, slide):
-        """如果存在全局背景图片，则将其添加到当前幻灯片并置于底层。"""
-        if not self.background_image_path:
+    def _add_background_image(self, slide, image_path: str):
+        """
+        [FIXED] Adds a background image and moves it to the back.
+        Now includes checks to prevent errors with invalid paths.
+        """
+        # --- [Solution Start] ---
+        # 1. Safeguard: Check if the image_path is None or empty.
+        if not image_path:
+            logging.warning("Attempted to add a background image, but the image path was empty. Skipping.")
             return
 
+        # 2. (Optional but Recommended) Safeguard: Check if the file actually exists.
+        if not os.path.exists(image_path):
+            logging.error(f"Background image not found at path: {image_path}. Skipping.")
+            return
+        # --- [Solution End] ---
+
         try:
-            # 添加图片，并使其铺满整个幻灯片
+            # This code will now only run if the path is valid and the file exists
             picture = slide.shapes.add_picture(
-                self.background_image_path,
-                px_to_emu(0), px_to_emu(0),
+                image_path, 0, 0,
                 width=self.prs.slide_width,
                 height=self.prs.slide_height
             )
 
-            # **[核心]** 将图片移动到Z轴的最底层，成为背景
-            spTree = slide.shapes._spTree
-            spTree.insert(0, spTree.pop(spTree.index(picture.element)))
-            logging.info("已在当前页面添加并置底全局背景图片。")
+            # Move picture to the back
+            pic_element = picture.element
+            slide.shapes._spTree.remove(pic_element)
+            slide.shapes._spTree.insert(0, pic_element)
 
+            logging.info(f"Successfully added background image: {image_path}")
         except Exception as e:
-            logging.error(f"在幻灯片上添加背景图片时出错: {e}", exc_info=True)
-
+            # This will catch any other unexpected errors during the process
+            logging.error(f"An unexpected error occurred while adding background image '{image_path}': {e}",
+                          exc_info=True)
     def render_slide(self, slide_data: dict, image_service):
         """根据给定的数据渲染一张幻灯片。"""
         blank_slide_layout = self.prs.slide_layouts[6]
         slide = self.prs.slides.add_slide(blank_slide_layout)
 
         # **[新逻辑]** 首先添加背景图片
-        self._add_background_image(slide)
+        self._add_background_image(slide, self.background_image_path)
 
         for element in slide_data.get('elements', []):
             element_type = element.get('type')
