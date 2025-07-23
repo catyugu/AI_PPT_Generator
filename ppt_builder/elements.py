@@ -28,7 +28,10 @@ ALIGNMENT_MAP = {
 }
 def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
     """
-    [已更新] 添加文本框，智能处理新旧JSON格式，并支持内嵌的Markdown加粗。
+    [已更新] 添加文本框，实现灵活的字体控制。
+    - 优先使用元素自身指定的字体 (`font.name`)。
+    - 如果未指定，则根据 `font.type` ('heading'/'body') 回退到全局默认字体。
+    - 兼容处理Markdown风格的加粗。
     """
     try:
         x, y, width, height = map(px_to_emu, [
@@ -39,33 +42,26 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
         txBox = slide.shapes.add_textbox(x, y, width, height)
         tf = txBox.text_frame
         tf.word_wrap = True
-        tf.clear()  # 清除默认段落
+        tf.clear()
 
         p = tf.paragraphs[0]
-
-        # --- 核心修改开始 ---
-        raw_content = element_data.get('content', '')
+        content = element_data.get('content', '')
         style = element_data.get('style', {})
-
-        # 1. 兼容性处理：检查content字段是字典还是字符串
-        if isinstance(raw_content, dict):
-            # 如果是字典 (新格式)，提取其中的'text'和'style'
-            content = raw_content.get('text', '')
-            # 合并样式：如果content内部有style，把它合并到主style中
-            if 'style' in raw_content:
-                style.update(raw_content.get('style', {}))
-        else:
-            # 如果是字符串 (旧格式)，直接使用
-            content = raw_content
-        # --- 核心修改结束 ---
-
         font_style = style.get('font', {})
+
+        # --- [核心修改] 字体决策逻辑 ---
+        # 1. 优先从元素 style 中获取 `font.name`
+        font_name = font_style.get('name')
+        if not font_name:
+            # 2. 如果没有，则根据 `font.type` 回退到 style_manager 中的默认字体
+            font_type = font_style.get('type', 'body')  # 默认为 'body'
+            font_name = style_manager.heading_font if font_type == 'heading' else style_manager.body_font
+        # --- [核心修改结束] ---
 
         # 优先使用局部颜色，否则使用全局文本颜色
         default_font_color = hex_to_rgb(font_style['color']) if 'color' in font_style else style_manager.text_color
 
-        # 2. 智能处理加粗 (您的原有逻辑保持不变)
-        # case 1: 文本中包含 '**'
+        # 处理Markdown加粗 `**text**`
         if '**' in content:
             parts = re.split(r'\*\*(.*?)\*\*', content)
             for i, part in enumerate(parts):
@@ -75,7 +71,7 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
                 run.text = part
                 font = run.font
 
-                font.name = style_manager.body_font if font_style.get('type') == 'body' else style_manager.heading_font
+                font.name = font_name  # 应用决策后的字体
                 font.size = Pt(font_style.get('size', 18))
                 font.italic = font_style.get('italic', False)
                 font.color.rgb = default_font_color
@@ -83,29 +79,26 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
                 is_bold_from_json = font_style.get('bold', False)
                 is_bold_from_markdown = (i % 2 == 1)
                 font.bold = is_bold_from_json or is_bold_from_markdown
-
-        # case 2: 文本中不含 '**'，按原逻辑处理
         else:
+            # 标准文本处理
             run = p.add_run()
             run.text = content
             font = run.font
-            font.name = style_manager.body_font if font_style.get('type') == 'body' else style_manager.heading_font
+            font.name = font_name  # 应用决策后的字体
             font.size = Pt(font_style.get('size', 18))
             font.bold = font_style.get('bold', False)
             font.italic = font_style.get('italic', False)
             font.color.rgb = default_font_color
 
-        # 3. 设置段落对齐 (您的原有逻辑保持不变)
+        # 设置段落对齐
         if alignment_str := style.get('alignment'):
             p.alignment = ALIGNMENT_MAP.get(alignment_str.upper(), PP_ALIGN.LEFT)
         else:
             p.alignment = PP_ALIGN.LEFT
 
-        logging.info(f"添加文本框: '{content[:30]}...'")
+        logging.info(f"添加文本框 (字体: {font_name}): '{content[:30]}...'")
     except Exception as e:
-        # 错误日志现在会打印修复前的原始数据，方便调试
         logging.error(f"添加文本框时出错: {e} | 原始元素数据: {element_data}", exc_info=True)
-
 def add_image(slide, image_path: str, element_data: dict):
     """添加图片。"""
     try:
