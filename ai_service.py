@@ -257,7 +257,7 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
                  "content": "You are a world-class presentation designer. Your output must be a single, raw JSON object. You must strictly follow all instructions."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=128000,
+            # max_tokens=64000,
             temperature=0.55  # 稍微提高一点温度以增加创意性，但仍保持结构稳定
         )
 
