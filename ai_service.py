@@ -109,7 +109,7 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
         * `type`: "image"
         * `image_keyword`: (字符串) **必须是英文**的图片搜索关键词，越具体越好。
         * `style`: (对象, 可选)
-            * `opacity`: (数字, 0.0-1.0) 透明度。
+            * `opacity`: (数字, 0.0-1.0) 透明度，0.0表示完全不透明，1.0表示完全透明。
             * `border`: (对象) 边框。包含 `color` (Hex) 和 `width` (px)。
             * `crop`: (对象, 可选) 裁剪。`{{ "shape": "circle" }}` 可将图片裁剪为圆形。
     
