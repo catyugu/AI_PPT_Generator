@@ -154,7 +154,7 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
     4.  **字体选择的泛用性 (Font Generality)**: 确保你的字体是在大部分电脑上可用的，以免因字体不支持等原因导致无法正常显示。
     5.  **切勿在`content`字段的文本中使用任何Markdown语法**（例如 `**文字**` 或 `*`）。
     6.  **所有的文本样式（如加粗）都必须通过`style`对象中的对应属性（如 `"bold": true`）来定义。**
-
+    7.  **你的PPT页数应该严格与用户要求的页数一致**
     ---
     
     ### **第四部分：输出样例**
@@ -257,7 +257,7 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
                  "content": "You are a world-class presentation designer. Your output must be a single, raw JSON object. You must strictly follow all instructions."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=12800,
+            max_tokens=128000,
             temperature=0.55  # 稍微提高一点温度以增加创意性，但仍保持结构稳定
         )
 
