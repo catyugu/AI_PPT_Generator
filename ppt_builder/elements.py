@@ -332,14 +332,16 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
         chart = slide.shapes.add_chart(chart_type, x, y, width, height, chart_data).chart
 
         # --- 1. 标题和图例 ---
-        if element_data.get('title','') != '':
+        if title_text := element_data.get('title'):
             chart.has_title = True
             p = chart.chart_title.text_frame.paragraphs[0]
-            p.font.size, p.font.bold, p.font.color.rgb, p.font.name = Pt(20), True, style_manager.text_color, style_manager.heading_font
-
+            p.font.size, p.font.bold = Pt(20), True
+            p.font.color.rgb = style_manager.text_color
+            p.font.name = style_manager.heading_font
         if chart.has_legend:
             chart.legend.position, chart.legend.include_in_layout = XL_LEGEND_POSITION.BOTTOM, False
-            chart.legend.font.size, chart.legend.font.color.rgb = Pt(12), style_manager.text_color
+            chart.legend.font.size = Pt(12)
+            chart.legend.font.color.rgb = style_manager.text_color
 
         # --- 2. 绘图区和数据标签 ---
         plot = chart.plots[0]
@@ -377,24 +379,27 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
                     marker.format.line.color.rgb = RGBColor(255, 255, 255)
                     marker.format.line.width = Pt(1.0)
 
-            # --- 4. Deep Styling for Pie Chart Points ---
-            if chart_type == XL_CHART_TYPE.PIE and hasattr(plot, 'series') and plot.series:
-                for j, point in enumerate(plot.series[0].points):
-                    point.format.fill.solid()
-                    point.format.fill.fore_color.rgb = style_manager.get_chart_color(j)
-                    point.format.line.color.rgb = RGBColor(255, 255, 255)
-                    point.format.line.width = Pt(1.5)
+        # C: 饼图的数据点级样式
+        if chart_type == XL_CHART_TYPE.PIE and hasattr(plot, 'series') and plot.series:
+            for j, point in enumerate(plot.series[0].points):
+                point_color = style_manager.get_chart_color(j)
+                point.format.fill.solid()
+                point.format.fill.fore_color.rgb = point_color
+                # [最终修复] 为饼图扇区添加边框
+                point.format.line.color.rgb = RGBColor(255, 255, 255)
+                point.format.line.width = Pt(1.5)
 
-            # --- 5. Axes Styling ---
-            if chart_type != XL_CHART_TYPE.PIE:
-                for axis in [chart.category_axis, chart.value_axis]:
-                    axis.tick_labels.font.size, axis.tick_labels.font.color.rgb = Pt(12), style_manager.text_color
-                if chart.value_axis.has_major_gridlines:
-                    chart.value_axis.major_gridlines.format.line.color.rgb = hex_to_rgb("#E0E0E0")
+        # --- 4. 坐标轴样式 ---
+        if chart_type != XL_CHART_TYPE.PIE:
+            for axis in [chart.category_axis, chart.value_axis]:
+                axis.tick_labels.font.size = Pt(12)
+                axis.tick_labels.font.color.rgb = style_manager.text_color
+            if chart.value_axis.has_major_gridlines:
+                chart.value_axis.major_gridlines.format.line.color.rgb = hex_to_rgb("#E0E0E0")
 
-            logging.info("Added and styled chart.")
+        logging.info("成功添加并深度美化了图表。")
     except Exception as e:
-        logging.error(f"Error adding chart: {e}", exc_info=True)
+        logging.error(f"添加图表时出错: {e}", exc_info=True)
 
 
 

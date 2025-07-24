@@ -72,8 +72,8 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
 
     1.  **`design_concept`**: (字符串) **必须用中文**为本次设计提炼一个高度概括、富有创意的核心设计理念。例如：“深海数据之境”、“都市脉搏与光影”、“墨韵书香”、“赛博朋克霓虹”等。
     2.  **`font_pairing`**: (对象) 定义全局**默认**字体搭配。当单个文本元素未指定特定字体时，将使用这里的设置。
-        * `heading`: (字符串) 默认标题字体。例如: "黑体 (SimHei)"。
-        * `body`: (字符串) 默认正文字体。例如: "宋体 (SimSun)"。
+        * `heading`: (字符串) 默认标题字体。例如: "黑体"。
+        * `body`: (字符串) 默认正文字体。例如: "宋体"。
     3.  **`color_palette`**: (对象) 定义一个专业、和谐的色板。
         * `primary`: (字符串, Hex) 主色，用于关键元素、标题。
         * `secondary`: (字符串, Hex) 辅色，用于次要信息、图表。
@@ -219,7 +219,7 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
         * **严格禁止**：将颜色亮度相近的文本和背景放在一起（例如，在深灰色背景上放黑色文字，或在天蓝色背景上放白色文字）。
     5.  **字体策略 (Font Strategy)**:
             * **优先使用推荐字体**: 为了保证最佳兼容性，请**严格从以下列表中选择字体**。这些字体在绝大多数现代操作系统中都可用。
-            * **中文推荐**:  **华文新魏 (STXinwei)**, **黑体 (SimHei)**, **华文行楷 (STXingkai)**, **楷体 (KaiTi)**, **等线 (Dengxian)**, **微软雅黑 (Microsoft YaHei)**。
+            * **中文推荐**:  **华文新魏**, **黑体**, **华文行楷**, **楷体**, **等线**, **微软雅黑**。
             * **英文推荐**: **Arial**, **Calibri**, **Times New Roman**, **Verdana**, **Georgia**。
             * **创意与兜底**: 你可以为标题、引用等特殊文本使用列表中的字体进行创意组合。对于大段正文，如果没有特别的设计需求，使用 "微软雅黑" 或 "等线" 是最安全的选择。
             * **严格禁止**: 请**绝对不要使用** "思源黑体 (Source Han Sans)", "思源宋体 (Source Han Serif)", "苹方 (PingFang SC)" 或任何其他需要用户额外安装的字体。
@@ -251,7 +251,7 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
             * **人文/艺术/复古风**: 多用“宋体”、“楷体”、“华文行楷”。
             * **女性/柔美风**: 多用“等线 Light”、“微软雅黑 Light”或“楷体”。
         * **安全字体列表**: 为了保证最佳兼容性，请**严格从以下列表中选择字体**。
-            * **中文推荐**:  **华文新魏 (STXinwei)**, **黑体 (SimHei)**, **华文行楷 (STXingkai)**, **楷体 (KaiTi)**, **等线 (Dengxian)**, **微软雅黑 (Microsoft YaHei)**, **宋体 (SimSun)**。
+            * **中文推荐**:  **华文新魏**, **黑体**, **华文行楷**, **楷体**, **等线**, **微软雅黑**, **宋体**。
             * **英文推荐**: **Arial**, **Calibri**, **Times New Roman**, **Verdana**, **Georgia**。
             * **严格禁止**: 请**绝对不要使用** "思源黑体", "思源宋体", "苹方" 或任何需要用户额外安装的字体。
 
