@@ -6,10 +6,11 @@ from PIL import Image, ImageOps, ImageDraw
 from pptx.util import Pt
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.chart.data import ChartData
-from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION, XL_MARKER_STYLE
 from pptx.dml.color import RGBColor
-# **[修复]** 导入正确的段落对齐枚举
 from pptx.enum.text import PP_ALIGN
+# [新增] 导入底层XML操作所需的工具
+from pptx.oxml.ns import qn
 from ppt_builder.styles import px_to_emu, hex_to_rgb, PresentationStyle
 
 # 形状类型映射
@@ -21,8 +22,7 @@ SHAPE_TYPE_MAP = {
     'rounded_rectangle': MSO_SHAPE.ROUNDED_RECTANGLE,
 }
 
-
-# **[修复]** 创建一个健壮的对齐方式映射
+# 对齐方式映射
 ALIGNMENT_MAP = {
     'LEFT': PP_ALIGN.LEFT,
     'CENTER': PP_ALIGN.CENTER,
@@ -36,50 +36,134 @@ def _crop_to_circle(image_path: str):
     使用Pillow将指定路径的图片处理成圆形，并返回一个内存中的图片流。
     """
     try:
-        # 打开图片并转换为RGBA以支持透明度
         with Image.open(image_path) as img:
             img = img.convert("RGBA")
-
-            # 创建一个与原图短边等大的正方形画布
             size = (min(img.size), min(img.size))
-
-            # 创建一个黑色的圆形遮罩 (mask)
             mask = Image.new('L', size, 0)
             draw = ImageDraw.Draw(mask)
             draw.ellipse((0, 0) + size, fill=255)
-
-            # 使用ImageOps.fit将原图无拉伸地裁剪并缩放到正方形
-            # 这会居中裁剪，保留最重要的部分
             output = ImageOps.fit(img, mask.size, centering=(0.5, 0.5))
-
-            # 应用圆形遮罩
             output.putalpha(mask)
-
-            # 将处理后的图片保存到内存中的字节流中
             buffer = io.BytesIO()
             output.save(buffer, format='PNG')
             buffer.seek(0)
             return buffer
-
     except Exception as e:
         logging.error(f"处理图片为圆形时失败: {image_path} - {e}", exc_info=True)
         return None
 
-def _set_shape_transparency(shape, transparency: int):
+
+# ==================== [新增] 底层XML透明度设置函数 ====================
+def _apply_transparency_to_color_format(color_format, opacity: float):
     """
-    设置形状的透明度。
-    :param shape: pptx 形状对象
-    :param transparency: 透明度值（0-100000）
+    [Definitive Fix] Applies transparency by directly manipulating the underlying XML.
+    This works for both solid and gradient fills.
+
+    :param color_format: A ColorFormat object (e.g., fill.fore_color, stop.color).
+    :param opacity: Opacity value from 0.0 (transparent) to 1.0 (opaque).
+    """
+    if not isinstance(opacity, (float, int)) or not (0.0 <= opacity <= 1.0):
+        return
+
+    # Convert opacity (1=opaque) to OpenXML alpha value (0=opaque, 100000=transparent)
+    alpha_val = int((1.0 - opacity) * 100000)
+
+    # The correct internal attribute to get the <a:srgbClr>, <a:schemeClr>, etc. element is `_color`
+    color_element = color_format._color
+
+    # Find the actual color definition element (e.g., srgbClr)
+    color_type_element = color_element._srgbClr
+
+    if color_type_element is None:
+        color_type_element = color_element.schemeClr
+
+    if color_type_element is None:
+        logging.warning("Could not determine color type to apply transparency.")
+        return
+
+    # Find or create the <a:alpha> child element
+    alpha_element = color_type_element.find(qn('a:alpha'))
+    if alpha_element is None:
+        alpha_element = color_type_element.makeelement(qn('a:alpha'))
+        color_type_element.append(alpha_element)
+
+    # Set the 'val' attribute to our calculated alpha value
+    alpha_element.set('val', str(alpha_val))
+
+
+def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
+    """
+    [终极修复版] 添加形状并应用样式。
+    - 使用底层XML操作，确保透明度对纯色和渐变填充都正确生效。
     """
     try:
+        x, y, width, height = map(px_to_emu, [
+            element_data.get('x', 50), element_data.get('y', 50),
+            element_data.get('width', 200), element_data.get('height', 200)
+        ])
+        shape_type_str = element_data.get('shape_type', 'rectangle').lower()
+        shape_type = SHAPE_TYPE_MAP.get(shape_type_str, MSO_SHAPE.RECTANGLE)
+        style = element_data.get('style', {})
+
+        shape = slide.shapes.add_shape(shape_type, x, y, width, height)
         fill = shape.fill
-        if fill.type == 1:  # 填充类型为纯色
-            fill.fore_color._xColorVal.transparency = transparency
-        elif fill.type == 2:  # 填充类型为渐变
-            for stop in fill.gradient_stops:
-                stop.color._xColorVal.transparency = transparency
+        line = shape.line
+
+        # 统一获取透明度值
+        opacity = style.get('opacity')
+        has_opacity = isinstance(opacity, (float, int)) and 0 <= opacity <= 1
+
+        # --- 设置填充 ---
+        if 'gradient' in style:
+            grad_info = style['gradient']
+            fill.gradient()
+            if 'angle' in grad_info:
+                fill.gradient_angle = grad_info['angle']
+
+            for i, hex_color in enumerate(grad_info.get('colors', [])):
+                if i < len(fill.gradient_stops):
+                    stop = fill.gradient_stops[i]
+                    try:
+                        stop.color.rgb = hex_to_rgb(hex_color)
+                        if has_opacity:
+                            _apply_transparency_to_color_format(stop.color, opacity)
+                    except Exception as e:
+                        logging.warning(f"设置渐变色标时出错: {e}")
+
+            log_msg = "为形状应用了渐变填充"
+            if has_opacity: log_msg += f" (透明度 opacity={opacity})"
+            logging.info(log_msg)
+
+        elif 'fill_color' in style and style['fill_color'] is not None:
+            fill.solid()
+            try:
+                fill.fore_color.rgb = hex_to_rgb(style['fill_color'])
+                if has_opacity:
+                    _apply_transparency_to_color_format(fill.fore_color, opacity)
+                    logging.info(f"为形状应用了纯色填充和透明度 (opacity={opacity})")
+            except Exception as e:
+                logging.warning(f"设置纯色填充时出错: {e}")
+        else:
+            fill.background()
+
+        # --- 设置边框 ---
+        if border_style := style.get('border'):
+            try:
+                line_color_hex = border_style.get('color', '#000000')
+                line.color.rgb = hex_to_rgb(line_color_hex)
+                line.width = Pt(border_style.get('width', 1))
+            except (ValueError, IndexError):
+                logging.warning(f"形状边框中提供了无效的十六进制颜色 '{line_color_hex}'。")
+        else:
+            line.fill.background()
+
+        logging.info(f"添加 {shape_type_str} 形状完成。")
     except Exception as e:
-        logging.warning(f"设置形状透明度时出错: {e}")
+        logging.error(f"添加形状时发生意外错误: {e}", exc_info=True)
+
+
+# --- 其他函数 (add_text_box, add_image, add_chart, add_table) 保持不变 ---
+# ... (将您文件中其他未改动的函数复制到这里)
 def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
     """
     [已更新] 添加文本框，实现灵活的字体控制和项目符号列表。
@@ -225,168 +309,95 @@ def add_image(slide, image_path: str, element_data: dict):
         logging.error(f"添加或裁剪图片 {image_path} 时出错: {e}", exc_info=True)
 
 
-def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
-    """
-    [已修复] 添加形状并应用样式。
-    - 统一处理透明度，确保其对纯色和渐变填充都生效。
-    - 增加对无效颜色值的容错处理。
-    """
-    try:
-        x, y, width, height = map(px_to_emu, [
-            element_data.get('x', 50), element_data.get('y', 50),
-            element_data.get('width', 200), element_data.get('height', 200)
-        ])
-        shape_type_str = element_data.get('shape_type', 'rectangle').lower()
-        shape_type = SHAPE_TYPE_MAP.get(shape_type_str, MSO_SHAPE.RECTANGLE)
-        style = element_data.get('style', {})
-
-        shape = slide.shapes.add_shape(shape_type, x, y, width, height)
-        fill = shape.fill
-        line = shape.line
-
-        # --- 第一步：设置填充类型和颜色 ---
-        # 这个逻辑块决定了形状是渐变、纯色还是无填充
-        if 'gradient' in style:
-            grad_info = style['gradient']
-            fill.gradient()
-            # 检查并应用渐变角度 (如果提供)
-            # 注意: python-pptx 似乎主要支持线性渐变的角度
-            if 'angle' in grad_info:
-                fill.gradient_angle = grad_info['angle']
-
-            for i, hex_color in enumerate(grad_info.get('colors', [])):
-                if i < len(fill.gradient_stops):
-                    try:
-                        fill.gradient_stops[i].color.rgb = hex_to_rgb(hex_color)
-                    except (ValueError, IndexError):
-                        logging.warning(f"形状渐变中提供了无效的十六进制颜色 '{hex_color}'。将使用默认黑色。")
-                        fill.gradient_stops[i].color.rgb = RGBColor(0, 0, 0)
-            logging.info("为形状应用了渐变填充。")
-
-        elif 'fill_color' in style and style['fill_color'] is not None:
-            fill.solid()
-            try:
-                fill.fore_color.rgb = hex_to_rgb(style['fill_color'])
-            except (ValueError, IndexError):
-                logging.warning(f"形状填充中提供了无效的十六进制颜色 '{style['fill_color']}'。将使用默认黑色。")
-                fill.fore_color.rgb = RGBColor(0, 0, 0)
-        else:
-            fill.background()  # 无填充
-
-        # --- 第二步：统一应用透明度 ---
-        # [核心修复] 将透明度逻辑移到填充类型设置之后，使其对所有填充都生效
-        opacity = style.get('opacity')
-        if isinstance(opacity, (float, int)) and 0 <= opacity <= 1:
-            transparency = 1 - opacity
-            _set_shape_transparency(shape, 100000 * transparency)
-            logging.info(f"为形状应用了透明度: {transparency}")
-
-        # --- 第三步：设置边框样式 ---
-        if border_style := style.get('border'):
-            try:
-                line_color_hex = border_style.get('color', '#000000')
-                line.color.rgb = hex_to_rgb(line_color_hex)
-                line.width = Pt(border_style.get('width', 1))
-            except (ValueError, IndexError):
-                logging.warning(f"形状边框中提供了无效的十六进制颜色 '{line_color_hex}'。将使用默认黑色边框。")
-                line.color.rgb = RGBColor(0, 0, 0)
-                line.width = Pt(border_style.get('width', 1))
-        else:
-            line.fill.background()  # 无边框
-
-        logging.info(f"添加 {shape_type_str} 形状。")
-    except Exception as e:
-        logging.error(f"添加形状时发生意外错误: {e}", exc_info=True)
-
+# 在 elements.py 文件中，请用下面的函数替换旧的 add_chart 函数
 
 # 在 elements.py 文件中，请用下面的函数替换旧的 add_chart 函数
 
 def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
     """
-    [再次优化] 添加图表并进行深度样式化，以实现最佳可读性。
-    - 优化数据标签，使其更清晰。
+    [终极美化版] 添加图表并进行深度样式化，以实现商业级报告外观。
     """
     try:
-        x, y, width, height = map(px_to_emu, [
-            element_data.get('x', 100), element_data.get('y', 150),
-            element_data.get('width', 1080), element_data.get('height', 450)
-        ])
+        x, y, width, height = map(px_to_emu, [element_data.get('x', 100), element_data.get('y', 150),
+                                              element_data.get('width', 1080), element_data.get('height', 450)])
+        chart_type_map = {'BAR': XL_CHART_TYPE.COLUMN_CLUSTERED, 'PIE': XL_CHART_TYPE.PIE, 'LINE': XL_CHART_TYPE.LINE}
+        chart_type = chart_type_map.get(element_data.get('chart_type', 'bar').upper())
 
-        chart_type_str = element_data.get('chart_type', 'bar').upper()
-        chart_type_map = {
-            'BAR': XL_CHART_TYPE.COLUMN_CLUSTERED,
-            'PIE': XL_CHART_TYPE.PIE,
-            'LINE': XL_CHART_TYPE.LINE
-        }
-        chart_type = chart_type_map.get(chart_type_str, XL_CHART_TYPE.COLUMN_CLUSTERED)
-
-        chart_data_info = element_data.get('data', {})
         chart_data = ChartData()
+        chart_data_info = element_data.get('data', {})
         chart_data.categories = chart_data_info.get('categories', [])
         for series_data in chart_data_info.get('series', []):
             chart_data.add_series(series_data.get('name', ''), series_data.get('values', []))
 
-        graphic_frame = slide.shapes.add_chart(chart_type, x, y, width, height, chart_data)
-        chart = graphic_frame.chart
+        chart = slide.shapes.add_chart(chart_type, x, y, width, height, chart_data).chart
 
-        # --- 1. 添加和设置图表标题 ---
-        if chart_title_text := element_data.get('title'):
+        # --- 1. 标题和图例 ---
+        if element_data.get('title','') != '':
             chart.has_title = True
-            chart_title = chart.chart_title
-            chart_title.text_frame.text = chart_title_text
-            p = chart_title.text_frame.paragraphs[0]
-            p.font.size = Pt(20)
-            p.font.bold = True
-            p.font.color.rgb = style_manager.text_color
-            p.font.name = style_manager.heading_font
-        else:
-            chart.has_title = False
+            p = chart.chart_title.text_frame.paragraphs[0]
+            p.font.size, p.font.bold, p.font.color.rgb, p.font.name = Pt(20), True, style_manager.text_color, style_manager.heading_font
 
-        # --- 2. 美化图例 (Legend) ---
         if chart.has_legend:
-            chart.legend.position = XL_LEGEND_POSITION.BOTTOM
-            chart.legend.include_in_layout = False
-            chart.legend.font.size = Pt(12)
-            chart.legend.font.color.rgb = style_manager.text_color
-            chart.legend.font.name = style_manager.body_font
+            chart.legend.position, chart.legend.include_in_layout = XL_LEGEND_POSITION.BOTTOM, False
+            chart.legend.font.size, chart.legend.font.color.rgb = Pt(12), style_manager.text_color
 
-        # --- 3. 设置数据标签 ---
+        # --- 2. 绘图区和数据标签 ---
         plot = chart.plots[0]
+        plot.vary_by_categories = False
         plot.has_data_labels = True
         data_labels = plot.data_labels
-        data_labels.font.size = Pt(14)  # 稍微增大字号
-        data_labels.font.bold = True  # 加粗更清晰
-        # 对于饼图，将标签颜色设为白色通常效果更好
+        data_labels.font.size, data_labels.font.bold = Pt(14), True
+        data_labels.font.color.rgb = RGBColor(255, 255,
+                                              255) if chart_type == XL_CHART_TYPE.PIE else style_manager.text_color
+        # 饼图专用数据标签设置
         if chart_type == XL_CHART_TYPE.PIE:
-            data_labels.font.color.rgb = RGBColor(255, 255, 255)
+            data_labels.show_percentage = True
+            data_labels.number_format = '0%'
 
-        # --- 4. 为系列应用主题色 ---
-        if hasattr(plot, 'series'):
-            for i, series in enumerate(plot.series):
-                series.format.fill.solid()
-                series.format.fill.fore_color.rgb = style_manager.get_chart_color(i)
-                if chart_type == XL_CHART_TYPE.LINE:
-                    series.format.line.color.rgb = style_manager.get_chart_color(i)
-
-        # --- 5. 美化坐标轴 (如果存在) ---
+        # --- 3. [核心] 系列的深度样式化 ---
+        # A & B: 柱状图和折线图的系列级样式
         if chart_type in [XL_CHART_TYPE.COLUMN_CLUSTERED, XL_CHART_TYPE.LINE]:
-            category_axis = chart.category_axis
-            category_axis.tick_labels.font.size = Pt(12)
-            category_axis.tick_labels.font.color.rgb = style_manager.text_color
-            category_axis.tick_labels.font.name = style_manager.body_font
+            for i, series in enumerate(getattr(plot, 'series', [])):
+                series_color = style_manager.get_chart_color(i)
 
-            value_axis = chart.value_axis
-            if value_axis.has_major_gridlines:
-                value_axis.major_gridlines.format.line.fill.solid()
-                value_axis.major_gridlines.format.line.color.rgb = hex_to_rgb("#E0E0E0")
-            value_axis.tick_labels.font.size = Pt(12)
-            value_axis.tick_labels.font.color.rgb = style_manager.text_color
-            value_axis.tick_labels.font.name = style_manager.body_font
+                if chart_type == XL_CHART_TYPE.COLUMN_CLUSTERED:
+                    series.format.fill.solid()
+                    series.format.fill.fore_color.rgb = series_color
+                    series.format.line.color.rgb = RGBColor(255, 255, 255)
+                    series.format.line.width = Pt(0.75)
 
-        logging.info(f"添加并深度美化了 '{element_data.get('title', '无标题')}' 图表。")
+                elif chart_type == XL_CHART_TYPE.LINE:
+                    series.format.line.color.rgb = series_color
+                    series.format.line.width = Pt(2.5)
+                    series.smooth = True
+                    marker = series.marker
+                    marker.style, marker.size = XL_MARKER_STYLE.CIRCLE, 8
+                    marker.format.fill.solid()
+                    marker.format.fill.fore_color.rgb = series_color
+                    marker.format.line.color.rgb = RGBColor(255, 255, 255)
+                    marker.format.line.width = Pt(1.0)
 
+            # --- 4. Deep Styling for Pie Chart Points ---
+            if chart_type == XL_CHART_TYPE.PIE and hasattr(plot, 'series') and plot.series:
+                for j, point in enumerate(plot.series[0].points):
+                    point.format.fill.solid()
+                    point.format.fill.fore_color.rgb = style_manager.get_chart_color(j)
+                    point.format.line.color.rgb = RGBColor(255, 255, 255)
+                    point.format.line.width = Pt(1.5)
+
+            # --- 5. Axes Styling ---
+            if chart_type != XL_CHART_TYPE.PIE:
+                for axis in [chart.category_axis, chart.value_axis]:
+                    axis.tick_labels.font.size, axis.tick_labels.font.color.rgb = Pt(12), style_manager.text_color
+                if chart.value_axis.has_major_gridlines:
+                    chart.value_axis.major_gridlines.format.line.color.rgb = hex_to_rgb("#E0E0E0")
+
+            logging.info("Added and styled chart.")
     except Exception as e:
-        logging.error(f"添加图表时出错: {e}", exc_info=True)
+        logging.error(f"Error adding chart: {e}", exc_info=True)
+
+
+
 def add_table(slide, element_data: dict, style_manager: PresentationStyle):
     """添加表格并应用样式。"""
     try:
