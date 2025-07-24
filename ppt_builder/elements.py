@@ -65,7 +65,21 @@ def _crop_to_circle(image_path: str):
         logging.error(f"处理图片为圆形时失败: {image_path} - {e}", exc_info=True)
         return None
 
-
+def _set_shape_transparency(shape, transparency: int):
+    """
+    设置形状的透明度。
+    :param shape: pptx 形状对象
+    :param transparency: 透明度值（0-100000）
+    """
+    try:
+        fill = shape.fill
+        if fill.type == 1:  # 填充类型为纯色
+            fill.fore_color._xColorVal.transparency = transparency
+        elif fill.type == 2:  # 填充类型为渐变
+            for stop in fill.gradient_stops:
+                stop.color._xColorVal.transparency = transparency
+    except Exception as e:
+        logging.warning(f"设置形状透明度时出错: {e}")
 def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
     """
     [已更新] 添加文本框，实现灵活的字体控制和项目符号列表。
@@ -263,8 +277,9 @@ def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
         # [核心修复] 将透明度逻辑移到填充类型设置之后，使其对所有填充都生效
         opacity = style.get('opacity')
         if isinstance(opacity, (float, int)) and 0 <= opacity <= 1:
-            fill.transparency = opacity
-            logging.info(f"为形状应用了透明度: {fill.transparency} (基于opacity={opacity})")
+            transparency = 1 - opacity
+            _set_shape_transparency(shape, 100000 * transparency)
+            logging.info(f"为形状应用了透明度: {transparency}")
 
         # --- 第三步：设置边框样式 ---
         if border_style := style.get('border'):
@@ -372,7 +387,6 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
 
     except Exception as e:
         logging.error(f"添加图表时出错: {e}", exc_info=True)
-
 def add_table(slide, element_data: dict, style_manager: PresentationStyle):
     """添加表格并应用样式。"""
     try:

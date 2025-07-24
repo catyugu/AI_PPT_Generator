@@ -116,7 +116,7 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
         * `type`: "image"
         * `image_keyword`: (字符串) **必须是英文**的图片搜索关键词，越具体越好。
         * `style`: (对象, 可选)
-            * `opacity`: (数字, 0.0-1.0) 图片整体的不透明度。
+            * `opacity`: (数字, 0.0-1.0) 图片整体的不透明度， 0.0表示完全透明，1.0表示完全可见。
             * `border`: (对象) 边框。包含 `color` (Hex) 和 `width` (px)。
             * `crop`: (字符串, 可选) **[新功能]** 裁剪形状。目前唯一支持的值是 **`"circle"`**，用于将图片裁剪为圆形。
 
@@ -125,7 +125,7 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
         * `shape_type`: (字符串) 形状类型。可选值: `rectangle`, `oval`, `triangle`, `star`, `rounded_rectangle`。
         * `style`: (对象)
             * `fill_color`: (字符串, Hex, 可选) 填充色。
-            * `opacity`: (数字, 0.0-1.0, 可选) 填充色的不透明度。`0.0`为完全不透明, `1.0`为完全透明。
+            * `opacity`: (数字, 0.0-1.0, 可选) 填充色的不透明度。0.0表示完全透明，1.0表示完全可见。
             * `gradient`: (对象, 可选, 与`fill_color`互斥) 渐变填充。
             * `border`: (对象, 可选) 边框。
     ** 重要 ** 以下是一个示例，描述如何使用`text_box`, `image` 和 `shape` 元素进行综合布局

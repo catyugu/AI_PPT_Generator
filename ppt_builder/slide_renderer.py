@@ -72,7 +72,9 @@ class SlideRenderer:
         # 使用我们定义的图层顺序对元素列表进行排序
         # key函数获取每个元素的类型，并在ELEMENT_LAYER_ORDER中查找对应的层级数字
         # get的第二个参数是默认值，确保即使AI生成了未知的元素类型也不会报错
-        elements_to_render.sort(key=lambda e: ELEMENT_LAYER_ORDER.get(e.get('type'), ELEMENT_LAYER_ORDER['default']))
+        elements_to_render.sort(
+            key=lambda e: ELEMENT_LAYER_ORDER.get(e.get('type'), ELEMENT_LAYER_ORDER['default'])
+        )
 
         logging.info("页面元素已按图层顺序重排，渲染开始...")
         # ===================== 修改结束 ============================

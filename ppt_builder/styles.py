@@ -28,17 +28,19 @@ class PresentationStyle:
         self.accent = self._hex_to_rgb(self.color_palette.get('accent', '#FFC107'))
 
         # 解析字体，提供备用值
-        self.heading_font = self.font_pairing.get('heading', 'Arial Black')
-        self.body_font = self.font_pairing.get('body', 'Arial')
+        self.heading_font = self.font_pairing.get('heading', '黑体')
+        self.body_font = self.font_pairing.get('body', '等线')
 
         # [新功能] 为图表定义一个颜色系列，确保图表颜色与主题匹配
-        self.chart_colors = [
-            self.accent,
-            self.secondary,
-            self.primary,
-            self._hex_to_rgb(self.color_palette.get('text', '#333333')),
-            self._hex_to_rgb('#9E9E9E'),  # 灰色作为补充
-            self._hex_to_rgb('#7CB342')  # 绿色作为补充
+        self._chart_colors_hex = [
+            self.color_palette.get('primary', '#4472C4'),
+            self.color_palette.get('secondary', '#ED7D31'),
+            self.color_palette.get('accent', '#A5A5A5'),
+            '#5B9BD5',  # 柔和蓝
+            '#70AD47',  # 活力绿
+            '#FFC000',  # 明亮黄
+            '#9B479D',  # 优雅紫
+            '#4BACC6'  # 青色
         ]
         logging.info(f"PresentationStyle initialized with concept: '{self.design_info.get('design_concept', 'N/A')}'")
 
@@ -60,10 +62,10 @@ class PresentationStyle:
         return self._hex_to_rgb(self.color_palette.get(color_name, '#000000'))
 
     def get_chart_color(self, index: int) -> RGBColor:
-        """
-        为图表系列提供循环的颜色。
-        """
-        return self.chart_colors[index % len(self.chart_colors)]
+
+        color_hex = self._chart_colors_hex[index % len(self._chart_colors_hex)]
+
+        return hex_to_rgb(color_hex)
 
 
 def px_to_emu(px):
