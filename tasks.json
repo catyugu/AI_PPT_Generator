@@ -1,31 +1,52 @@
 [
     {
-        "theme": "新产品上市发布会方案（宽屏）",
+        "theme": "新产品上市发布会方案",
         "pages": 12,
-        "output": "新产品发布会-16x9",
         "aspect_ratio": "16:9"
     },
     {
-        "theme": "企业年度财务报告与分析（标准屏）",
+        "theme": "企业年度财务报告与分析",
         "pages": 15,
-        "output": "年度财报-4x3",
+        "aspect_ratio": "16:9"
+    },
+    {
+        "theme": "项目启动会",
+        "pages": 10,
+        "aspect_ratio": "16:9"
+    },
+    {
+        "theme": "初创公司融资路演",
+        "pages": 12,
+        "aspect_ratio": "16:9"
+    },
+    {
+        "theme": "网络安全意识普及培训",
+        "pages": 10,
+        "aspect_ratio": "16:9"
+    },
+        {
+        "theme": "新产品上市发布会方案",
+        "pages": 12,
         "aspect_ratio": "4:3"
     },
     {
-        "theme": "项目启动会（Project Kick-off）",
-        "pages": 10,
-        "output": "项目启动会"
+        "theme": "企业年度财务报告与分析",
+        "pages": 15,
+        "aspect_ratio": "4:3"
     },
     {
-        "theme": "初创公司融资路演（Pitch Deck）",
+        "theme": "项目启动会",
+        "pages": 10,
+        "aspect_ratio": "4:3"
+    },
+    {
+        "theme": "初创公司融资路演",
         "pages": 12,
-        "output": "融资路演-16x9",
-        "aspect_ratio": "16:9"
+        "aspect_ratio": "4:3"
     },
     {
-        "theme": "网络安全意识普及培训（标准屏）",
+        "theme": "网络安全意识普及培训",
         "pages": 10,
-        "output": "网络安全培训-4x3",
         "aspect_ratio": "4:3"
     }
 ]
