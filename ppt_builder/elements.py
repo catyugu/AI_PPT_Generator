@@ -1,7 +1,8 @@
 import logging
 import re
+import io
 
-from PIL import Image
+from PIL import Image, ImageOps, ImageDraw
 from pptx.util import Pt
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.chart.data import ChartData
@@ -27,6 +28,43 @@ ALIGNMENT_MAP = {
     'RIGHT': PP_ALIGN.RIGHT,
     'JUSTIFY': PP_ALIGN.JUSTIFY,
 }
+
+
+def _crop_to_circle(image_path: str):
+    """
+    使用Pillow将指定路径的图片处理成圆形，并返回一个内存中的图片流。
+    """
+    try:
+        # 打开图片并转换为RGBA以支持透明度
+        with Image.open(image_path) as img:
+            img = img.convert("RGBA")
+
+            # 创建一个与原图短边等大的正方形画布
+            size = (min(img.size), min(img.size))
+
+            # 创建一个黑色的圆形遮罩 (mask)
+            mask = Image.new('L', size, 0)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse((0, 0) + size, fill=255)
+
+            # 使用ImageOps.fit将原图无拉伸地裁剪并缩放到正方形
+            # 这会居中裁剪，保留最重要的部分
+            output = ImageOps.fit(img, mask.size, centering=(0.5, 0.5))
+
+            # 应用圆形遮罩
+            output.putalpha(mask)
+
+            # 将处理后的图片保存到内存中的字节流中
+            buffer = io.BytesIO()
+            output.save(buffer, format='PNG')
+            buffer.seek(0)
+            return buffer
+
+    except Exception as e:
+        logging.error(f"处理图片为圆形时失败: {image_path} - {e}", exc_info=True)
+        return None
+
+
 def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
     """
     [已更新] 添加文本框，实现灵活的字体控制。
@@ -104,8 +142,9 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
 
 def add_image(slide, image_path: str, element_data: dict):
     """
-    [已更新] 添加图片并智能裁剪以适应图框，避免拉伸。
-    该函数会保持图片的原始宽高比，通过裁剪多余部分来填充指定的图框区域。
+    [最终版] 向幻灯片添加图片。
+    - 如果 style.crop 为 'circle', 则将图片裁剪为圆形。
+    - 否则，执行智能矩形裁剪以适应图框，避免拉伸。
     """
     try:
         if not image_path:
@@ -118,49 +157,59 @@ def add_image(slide, image_path: str, element_data: dict):
         ]
         box_x_emu, box_y_emu, box_width_emu, box_height_emu = map(px_to_emu, [box_x, box_y, box_width, box_height])
 
-        # 初始时，将图片添加到幻灯片上，尺寸与图框相同（这会导致暂时拉伸）
-        pic = slide.shapes.add_picture(image_path, box_x_emu, box_y_emu, width=box_width_emu, height=box_height_emu)
+        style = element_data.get('style', {})
 
-        # --- 核心裁剪逻辑 ---
-        # 读取图片原始尺寸
-        with Image.open(image_path) as img:
-            img_width_px, img_height_px = img.size
+        # ================== 新增逻辑分支 ==================
+        if style.get('crop') == 'circle':
+            logging.info(f"检测到圆形裁剪请求，正在处理图片: {image_path}")
 
-        # 计算宽高比
-        # 避免除以零的错误
-        if img_height_px == 0 or box_height == 0:
-            logging.warning(f"图片或图框高度为零，无法计算宽高比，跳过裁剪: {image_path}")
-            return
+            # 1. 使用Pillow处理图片为圆形
+            circular_image_stream = _crop_to_circle(image_path)
 
-        img_aspect = img_width_px / img_height_px
-        box_aspect = box_width / box_height
+            if circular_image_stream:
+                # 2. 为保证圆形不变形，强制使用图框的短边作为直径
+                diameter = min(box_width_emu, box_height_emu)
 
-        # 比较宽高比，决定如何裁剪
-        # 使用 round 避免浮点数精度问题
-        if round(img_aspect, 2) != round(box_aspect, 2):
-            if img_aspect > box_aspect:
-                # 图片比图框更“宽”，需要裁剪左右两边
-                # 新的裁剪比例计算公式: (1 - 目标宽高比 / 图片宽高比) / 2
-                crop_ratio = (1 - box_aspect / img_aspect) / 2
-                pic.crop_left = crop_ratio
-                pic.crop_right = crop_ratio
-                pic.crop_top = 0
-                pic.crop_bottom = 0
+                # 3. 添加处理后的图片到幻灯片
+                pic = slide.shapes.add_picture(circular_image_stream, box_x_emu, box_y_emu, width=diameter,
+                                               height=diameter)
+                logging.info(f"成功添加圆形图片: {image_path}")
             else:
-                # 图片比图框更“高”，需要裁剪上下两边
-                crop_ratio = (1 - img_aspect / box_aspect) / 2
-                pic.crop_top = crop_ratio
-                pic.crop_bottom = crop_ratio
-                pic.crop_left = 0
-                pic.crop_right = 0
+                # 如果圆形处理失败，可以考虑回退到原始逻辑或直接跳过
+                logging.error(f"圆形图片处理失败，无法添加图片: {image_path}")
 
-        logging.info(f"从路径添加并智能裁剪图片: {image_path}")
+        # ================== 保留原始逻辑 ==================
+        else:
+            # 初始时，将图片添加到幻灯片上，尺寸与图框相同（这会导致暂时拉伸）
+            pic = slide.shapes.add_picture(image_path, box_x_emu, box_y_emu, width=box_width_emu, height=box_height_emu)
+
+            # --- 核心裁剪逻辑 ---
+            with Image.open(image_path) as img:
+                img_width_px, img_height_px = img.size
+
+            if img_height_px == 0 or box_height == 0:
+                logging.warning(f"图片或图框高度为零，无法计算宽高比，跳过裁剪: {image_path}")
+                return
+
+            img_aspect = img_width_px / img_height_px
+            box_aspect = box_width / box_height
+
+            if round(img_aspect, 2) != round(box_aspect, 2):
+                if img_aspect > box_aspect:
+                    crop_ratio = (1 - box_aspect / img_aspect) / 2
+                    pic.crop_left = crop_ratio
+                    pic.crop_right = crop_ratio
+                else:
+                    crop_ratio = (1 - img_aspect / box_aspect) / 2
+                    pic.crop_top = crop_ratio
+                    pic.crop_bottom = crop_ratio
+
+            logging.info(f"从路径添加并智能裁剪矩形图片: {image_path}")
 
     except FileNotFoundError:
         logging.error(f"图片文件未找到: {image_path}")
     except Exception as e:
         logging.error(f"添加或裁剪图片 {image_path} 时出错: {e}", exc_info=True)
-
 
 
 def add_shape(slide, element_data: dict, style_manager: PresentationStyle):

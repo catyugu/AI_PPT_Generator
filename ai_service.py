@@ -119,8 +119,8 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
         * `style`: (对象, 可选)
             * `opacity`: (数字, 0.0-1.0) 透明度。
             * `border`: (对象) 边框。包含 `color` (Hex) 和 `width` (px)。
-            * `crop`: (对象, 可选) 裁剪。`{{ "shape": "circle" }}` 可将图片裁剪为圆形。
-
+            * `crop`: (对象, 可选) 裁剪。`{{ "shape": "circle" }}` 可将图片裁剪为圆形。例如: 
+            `{{ "type": "image", "image_keyword": "team members working together", "x": 0.1, "y": 0.4, "width": 0.2, "style": {{"crop": "circle"}} }}`
     3.  **`shape`**
         * `type`: "shape"
         * `shape_type`: (字符串) 形状类型。可选值: `rectangle`, `oval`, `triangle`, `star`, `rounded_rectangle`。
