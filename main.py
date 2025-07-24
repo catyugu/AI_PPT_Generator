@@ -32,22 +32,38 @@ def ensure_dirs_exist():
     os.makedirs(TEMP_DIR, exist_ok=True)
 
 
-def generate_single_ppt(theme: str, num_pages: int, output_file: str, aspect_ratio: str):
+def generate_single_ppt(theme: str, num_pages: int, aspect_ratio: str):
     """
-    为单个主题生成演示文稿。
-    [已更新] 新增 aspect_ratio 参数。
+    [已更新] 为单个主题生成演示文稿，并根据内容自动命名文件。
     """
-    logging.info(f"主题: '{theme}', 页数: {num_pages}, 宽高比: {aspect_ratio}, 输出文件: '{output_file}'")
+    logging.info(f"任务开始 - 主题: '{theme}', 页数: {num_pages}, 宽高比: {aspect_ratio}")
 
     logging.info(f"正在请求AI为主题 '{theme}' 生成 ({aspect_ratio}) 方案...")
-    # 将宽高比传递给AI服务
     plan = generate_presentation_plan(theme, num_pages, aspect_ratio)
 
     if plan:
         logging.info("AI方案生成成功，开始构建演示文稿。")
         try:
-            full_output_path = os.path.join(OUTPUT_DIR, output_file)
-            # 将宽高比传递给构建器
+            # --- [核心修改] 自动生成文件名 ---
+            # 1. 从方案中获取设计风格
+            style = plan.get('design_concept', '未知风格')
+            # 2. 获取当前日期
+            date_str = datetime.now().strftime("%Y%m%d")
+
+            # 3. 清理文件名中的非法字符
+            sanitized_theme = theme.replace(' ', '_').replace('/', '_').replace('\\', '_').replace(':', '：').replace(
+                '《', '').replace('》', '')
+            sanitized_style = style.replace(' ', '_').replace('/', '_').replace('\\', '_').replace(':', '：')
+
+            # 4. 清理并格式化宽高比
+            ratio_str = aspect_ratio.replace(':', 'x')
+
+            # 5. 组合成最终文件名
+            output_filename = f"{sanitized_theme}_{sanitized_style}_{date_str}_{ratio_str}.pptx"
+            full_output_path = os.path.join(OUTPUT_DIR, output_filename)
+            logging.info(f"自动生成文件名: {output_filename}")
+            # --- 修改结束 ---
+
             builder = PresentationBuilder(plan, aspect_ratio)
             builder.build_presentation(full_output_path)
             logging.info(f"演示文稿生成完成，已保存至 {full_output_path}")
@@ -60,13 +76,6 @@ def generate_single_ppt(theme: str, num_pages: int, output_file: str, aspect_rat
         return False
 
 
-def get_formatted_filename(base_name: str) -> str:
-    """根据基础名称生成带有时间戳的文件名。"""
-    sanitized_base_name = base_name.removesuffix('.pptx').replace(' ', '_').replace('/', '_').replace('\\', '_')
-    timestamp = datetime.now().strftime("%Y%m%d-%H%M")
-    return f"{sanitized_base_name}_{timestamp}.pptx"
-
-
 def main():
     """主函数，支持通过命令行参数进行单次生成，或通过配置文件进行批量生成。"""
     atexit.register(cleanup_temp_dir)
@@ -77,9 +86,7 @@ def main():
     parser = argparse.ArgumentParser(description="AI PPT Generator")
     parser.add_argument("--theme", type=str, help="演示文稿的主题 (单次模式)。")
     parser.add_argument("--pages", type=int, default=10, help="演示文稿的页数。")
-    parser.add_argument("--output", type=str, help="演示文稿的输出文件名 (单次模式, 无需后缀和时间戳)。")
     parser.add_argument("--batch", type=str, help="用于批量处理的JSON文件路径。")
-    # --- [核心修改] 新增命令行参数 ---
     parser.add_argument(
         "--aspect_ratio",
         type=str,
@@ -104,12 +111,10 @@ def main():
                     continue
 
                 pages = task.get("pages", args.pages)
-                # 优先使用任务中定义的宽高比，否则使用命令行的默认值
                 aspect_ratio = task.get("aspect_ratio", args.aspect_ratio)
-                base_name = task.get("output", theme)
-                output_filename = get_formatted_filename(base_name)
 
-                generate_single_ppt(theme, pages, output_filename, aspect_ratio)
+                # [已简化] 直接调用生成函数，无需再处理文件名
+                generate_single_ppt(theme, pages, aspect_ratio)
 
         except FileNotFoundError:
             logging.error(f"批量处理文件未找到: {args.batch}")
@@ -120,10 +125,8 @@ def main():
 
     elif args.theme:
         logging.info("--- 开始单次生成PPT任务 ---")
-        base_name = args.output if args.output else args.theme
-        output_filename = get_formatted_filename(base_name)
-        # 在单次任务中传递宽高比
-        generate_single_ppt(args.theme, args.pages, output_filename, args.aspect_ratio)
+        # [已简化] 直接调用生成函数
+        generate_single_ppt(args.theme, args.pages, args.aspect_ratio)
     else:
         logging.warning("未指定操作。请使用 --theme 进行单次生成，或使用 --batch 进行批量处理。")
         parser.print_help()
