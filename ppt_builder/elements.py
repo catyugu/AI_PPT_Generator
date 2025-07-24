@@ -21,6 +21,7 @@ SHAPE_TYPE_MAP = {
     'rounded_rectangle': MSO_SHAPE.ROUNDED_RECTANGLE,
 }
 
+
 # **[修复]** 创建一个健壮的对齐方式映射
 ALIGNMENT_MAP = {
     'LEFT': PP_ALIGN.LEFT,
@@ -67,10 +68,11 @@ def _crop_to_circle(image_path: str):
 
 def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
     """
-    [已更新] 添加文本框，实现灵活的字体控制。
+    [已更新] 添加文本框，实现灵活的字体控制和项目符号列表。
     - 优先使用元素自身指定的字体 (`font.name`)。
     - 如果未指定，则根据 `font.type` ('heading'/'body') 回退到全局默认字体。
     - 兼容处理Markdown风格的加粗。
+    - **[新功能]** 如果`content`是列表，则自动生成项目符号列表。
     """
     try:
         x, y, width, height = map(px_to_emu, [
@@ -83,59 +85,74 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
         tf.word_wrap = True
         tf.clear()
 
-        p = tf.paragraphs[0]
         content = element_data.get('content', '')
         style = element_data.get('style', {})
         font_style = style.get('font', {})
 
-        # --- [核心修改] 字体决策逻辑 ---
-        # 1. 优先从元素 style 中获取 `font.name`
+        # --- 字体决策逻辑 ---
         font_name = font_style.get('name')
         if not font_name:
-            # 2. 如果没有，则根据 `font.type` 回退到 style_manager 中的默认字体
-            font_type = font_style.get('type', 'body')  # 默认为 'body'
+            font_type = font_style.get('type', 'body')
             font_name = style_manager.heading_font if font_type == 'heading' else style_manager.body_font
-        # --- [核心修改结束] ---
 
-        # 优先使用局部颜色，否则使用全局文本颜色
         default_font_color = hex_to_rgb(font_style['color']) if 'color' in font_style else style_manager.text_color
+        font_size_pt = font_style.get('size', 18)
+        is_italic_from_json = font_style.get('italic', False)
+        is_bold_from_json = font_style.get('bold', False)
 
-        # 处理Markdown加粗 `**text**`
-        if '**' in content:
-            parts = re.split(r'\*\*(.*?)\*\*', content)
-            for i, part in enumerate(parts):
-                if not part: continue
-
-                run = p.add_run()
-                run.text = part
-                font = run.font
-
-                font.name = font_name  # 应用决策后的字体
-                font.size = Pt(font_style.get('size', 18))
-                font.italic = font_style.get('italic', False)
-                font.color.rgb = default_font_color
-
-                is_bold_from_json = font_style.get('bold', False)
-                is_bold_from_markdown = (i % 2 == 1)
-                font.bold = is_bold_from_json or is_bold_from_markdown
-        else:
-            # 标准文本处理
-            run = p.add_run()
-            run.text = content
+        def apply_run_style(run, text_part, is_markdown_bold=False):
+            """辅助函数，用于应用样式到文本块"""
+            run.text = text_part
             font = run.font
-            font.name = font_name  # 应用决策后的字体
-            font.size = Pt(font_style.get('size', 18))
-            font.bold = font_style.get('bold', False)
-            font.italic = font_style.get('italic', False)
+            font.name = font_name
+            font.size = Pt(font_size_pt)
+            font.italic = is_italic_from_json
             font.color.rgb = default_font_color
+            font.bold = is_bold_from_json or is_markdown_bold
 
-        # 设置段落对齐
-        if alignment_str := style.get('alignment'):
-            p.alignment = ALIGNMENT_MAP.get(alignment_str.upper(), PP_ALIGN.LEFT)
+        # ================== 新增逻辑：项目符号列表 ==================
+        if isinstance(content, list):
+            logging.info(f"检测到项目符号列表，共 {len(content)} 项。")
+            for i, item_text in enumerate(content):
+                if i == 0:
+                    p = tf.paragraphs[0]
+                else:
+                    p = tf.add_paragraph()
+
+                p.level = 0  # 可根据需要设置缩进级别
+
+                if '**' in item_text:
+                    parts = re.split(r'\*\*(.*?)\*\*', item_text)
+                    for j, part in enumerate(parts):
+                        if not part: continue
+                        apply_run_style(p.add_run(), part, is_markdown_bold=(j % 2 == 1))
+                else:
+                    apply_run_style(p.add_run(), item_text)
+
+                # 为每个段落设置对齐方式
+                if alignment_str := style.get('alignment'):
+                    p.alignment = ALIGNMENT_MAP.get(alignment_str.upper(), PP_ALIGN.LEFT)
+                else:
+                    p.alignment = PP_ALIGN.LEFT
+        # ================== 原有逻辑：处理单个字符串 ==================
         else:
-            p.alignment = PP_ALIGN.LEFT
+            p = tf.paragraphs[0]
+            if '**' in content:
+                parts = re.split(r'\*\*(.*?)\*\*', content)
+                for i, part in enumerate(parts):
+                    if not part: continue
+                    apply_run_style(p.add_run(), part, is_markdown_bold=(i % 2 == 1))
+            else:
+                apply_run_style(p.add_run(), content)
 
-        logging.info(f"添加文本框 (字体: {font_name}): '{content[:30]}...'")
+            # 设置段落对齐
+            if alignment_str := style.get('alignment'):
+                p.alignment = ALIGNMENT_MAP.get(alignment_str.upper(), PP_ALIGN.LEFT)
+            else:
+                p.alignment = PP_ALIGN.LEFT
+
+        log_content = str(content)
+        logging.info(f"添加文本框 (字体: {font_name}): '{log_content[:30]}...'")
     except Exception as e:
         logging.error(f"添加文本框时出错: {e} | 原始元素数据: {element_data}", exc_info=True)
 
@@ -159,41 +176,24 @@ def add_image(slide, image_path: str, element_data: dict):
 
         style = element_data.get('style', {})
 
-        # ================== 新增逻辑分支 ==================
         if style.get('crop') == 'circle':
             logging.info(f"检测到圆形裁剪请求，正在处理图片: {image_path}")
-
-            # 1. 使用Pillow处理图片为圆形
             circular_image_stream = _crop_to_circle(image_path)
-
             if circular_image_stream:
-                # 2. 为保证圆形不变形，强制使用图框的短边作为直径
                 diameter = min(box_width_emu, box_height_emu)
-
-                # 3. 添加处理后的图片到幻灯片
-                pic = slide.shapes.add_picture(circular_image_stream, box_x_emu, box_y_emu, width=diameter,
-                                               height=diameter)
+                slide.shapes.add_picture(circular_image_stream, box_x_emu, box_y_emu, width=diameter, height=diameter)
                 logging.info(f"成功添加圆形图片: {image_path}")
             else:
-                # 如果圆形处理失败，可以考虑回退到原始逻辑或直接跳过
                 logging.error(f"圆形图片处理失败，无法添加图片: {image_path}")
-
-        # ================== 保留原始逻辑 ==================
         else:
-            # 初始时，将图片添加到幻灯片上，尺寸与图框相同（这会导致暂时拉伸）
             pic = slide.shapes.add_picture(image_path, box_x_emu, box_y_emu, width=box_width_emu, height=box_height_emu)
-
-            # --- 核心裁剪逻辑 ---
             with Image.open(image_path) as img:
                 img_width_px, img_height_px = img.size
-
             if img_height_px == 0 or box_height == 0:
                 logging.warning(f"图片或图框高度为零，无法计算宽高比，跳过裁剪: {image_path}")
                 return
-
             img_aspect = img_width_px / img_height_px
             box_aspect = box_width / box_height
-
             if round(img_aspect, 2) != round(box_aspect, 2):
                 if img_aspect > box_aspect:
                     crop_ratio = (1 - box_aspect / img_aspect) / 2
@@ -203,7 +203,6 @@ def add_image(slide, image_path: str, element_data: dict):
                     crop_ratio = (1 - img_aspect / box_aspect) / 2
                     pic.crop_top = crop_ratio
                     pic.crop_bottom = crop_ratio
-
             logging.info(f"从路径添加并智能裁剪矩形图片: {image_path}")
 
     except FileNotFoundError:
@@ -214,7 +213,9 @@ def add_image(slide, image_path: str, element_data: dict):
 
 def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
     """
-    [已更新] 添加形状并应用样式，增加对无效颜色值的容错处理。
+    [已修复] 添加形状并应用样式。
+    - 统一处理透明度，确保其对纯色和渐变填充都生效。
+    - 增加对无效颜色值的容错处理。
     """
     try:
         x, y, width, height = map(px_to_emu, [
@@ -229,10 +230,16 @@ def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
         fill = shape.fill
         line = shape.line
 
-        # 填充样式
+        # --- 第一步：设置填充类型和颜色 ---
+        # 这个逻辑块决定了形状是渐变、纯色还是无填充
         if 'gradient' in style:
             grad_info = style['gradient']
             fill.gradient()
+            # 检查并应用渐变角度 (如果提供)
+            # 注意: python-pptx 似乎主要支持线性渐变的角度
+            if 'angle' in grad_info:
+                fill.gradient_angle = grad_info['angle']
+
             for i, hex_color in enumerate(grad_info.get('colors', [])):
                 if i < len(fill.gradient_stops):
                     try:
@@ -241,6 +248,7 @@ def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
                         logging.warning(f"形状渐变中提供了无效的十六进制颜色 '{hex_color}'。将使用默认黑色。")
                         fill.gradient_stops[i].color.rgb = RGBColor(0, 0, 0)
             logging.info("为形状应用了渐变填充。")
+
         elif 'fill_color' in style and style['fill_color'] is not None:
             fill.solid()
             try:
@@ -251,7 +259,14 @@ def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
         else:
             fill.background()  # 无填充
 
-        # 边框样式
+        # --- 第二步：统一应用透明度 ---
+        # [核心修复] 将透明度逻辑移到填充类型设置之后，使其对所有填充都生效
+        opacity = style.get('opacity')
+        if isinstance(opacity, (float, int)) and 0 <= opacity <= 1:
+            fill.transparency = opacity
+            logging.info(f"为形状应用了透明度: {fill.transparency} (基于opacity={opacity})")
+
+        # --- 第三步：设置边框样式 ---
         if border_style := style.get('border'):
             try:
                 line_color_hex = border_style.get('color', '#000000')
@@ -268,8 +283,14 @@ def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
     except Exception as e:
         logging.error(f"添加形状时发生意外错误: {e}", exc_info=True)
 
+
+# 在 elements.py 文件中，请用下面的函数替换旧的 add_chart 函数
+
 def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
-    """添加图表并使用主题颜色进行样式化。"""
+    """
+    [再次优化] 添加图表并进行深度样式化，以实现最佳可读性。
+    - 优化数据标签，使其更清晰。
+    """
     try:
         x, y, width, height = map(px_to_emu, [
             element_data.get('x', 100), element_data.get('y', 150),
@@ -277,7 +298,11 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
         ])
 
         chart_type_str = element_data.get('chart_type', 'bar').upper()
-        chart_type_map = {'BAR': XL_CHART_TYPE.COLUMN_CLUSTERED, 'PIE': XL_CHART_TYPE.PIE, 'LINE': XL_CHART_TYPE.LINE}
+        chart_type_map = {
+            'BAR': XL_CHART_TYPE.COLUMN_CLUSTERED,
+            'PIE': XL_CHART_TYPE.PIE,
+            'LINE': XL_CHART_TYPE.LINE
+        }
         chart_type = chart_type_map.get(chart_type_str, XL_CHART_TYPE.COLUMN_CLUSTERED)
 
         chart_data_info = element_data.get('data', {})
@@ -289,25 +314,64 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
         graphic_frame = slide.shapes.add_chart(chart_type, x, y, width, height, chart_data)
         chart = graphic_frame.chart
 
-        # **[关键优化]** 使用样式管理器为图表系列应用主题颜色
-        if hasattr(chart.plots[0], 'series'):
-            for i, series in enumerate(chart.plots[0].series):
-                series.format.fill.solid()
-                series.format.fill.fore_color.rgb = style_manager.get_chart_color(i)
+        # --- 1. 添加和设置图表标题 ---
+        if chart_title_text := element_data.get('title'):
+            chart.has_title = True
+            chart_title = chart.chart_title
+            chart_title.text_frame.text = chart_title_text
+            p = chart_title.text_frame.paragraphs[0]
+            p.font.size = Pt(20)
+            p.font.bold = True
+            p.font.color.rgb = style_manager.text_color
+            p.font.name = style_manager.heading_font
+        else:
+            chart.has_title = False
 
+        # --- 2. 美化图例 (Legend) ---
         if chart.has_legend:
             chart.legend.position = XL_LEGEND_POSITION.BOTTOM
             chart.legend.include_in_layout = False
+            chart.legend.font.size = Pt(12)
+            chart.legend.font.color.rgb = style_manager.text_color
+            chart.legend.font.name = style_manager.body_font
 
+        # --- 3. 设置数据标签 ---
         plot = chart.plots[0]
         plot.has_data_labels = True
         data_labels = plot.data_labels
-        data_labels.font.size = Pt(10)
-        data_labels.font.color.rgb = style_manager.text_color
-        logging.info(f"添加已应用主题样式的 {chart_type_str} 图表。")
+        data_labels.font.size = Pt(14)  # 稍微增大字号
+        data_labels.font.bold = True  # 加粗更清晰
+        # 对于饼图，将标签颜色设为白色通常效果更好
+        if chart_type == XL_CHART_TYPE.PIE:
+            data_labels.font.color.rgb = RGBColor(255, 255, 255)
+
+        # --- 4. 为系列应用主题色 ---
+        if hasattr(plot, 'series'):
+            for i, series in enumerate(plot.series):
+                series.format.fill.solid()
+                series.format.fill.fore_color.rgb = style_manager.get_chart_color(i)
+                if chart_type == XL_CHART_TYPE.LINE:
+                    series.format.line.color.rgb = style_manager.get_chart_color(i)
+
+        # --- 5. 美化坐标轴 (如果存在) ---
+        if chart_type in [XL_CHART_TYPE.COLUMN_CLUSTERED, XL_CHART_TYPE.LINE]:
+            category_axis = chart.category_axis
+            category_axis.tick_labels.font.size = Pt(12)
+            category_axis.tick_labels.font.color.rgb = style_manager.text_color
+            category_axis.tick_labels.font.name = style_manager.body_font
+
+            value_axis = chart.value_axis
+            if value_axis.has_major_gridlines:
+                value_axis.major_gridlines.format.line.fill.solid()
+                value_axis.major_gridlines.format.line.color.rgb = hex_to_rgb("#E0E0E0")
+            value_axis.tick_labels.font.size = Pt(12)
+            value_axis.tick_labels.font.color.rgb = style_manager.text_color
+            value_axis.tick_labels.font.name = style_manager.body_font
+
+        logging.info(f"添加并深度美化了 '{element_data.get('title', '无标题')}' 图表。")
+
     except Exception as e:
         logging.error(f"添加图表时出错: {e}", exc_info=True)
-
 
 def add_table(slide, element_data: dict, style_manager: PresentationStyle):
     """添加表格并应用样式。"""
@@ -327,7 +391,6 @@ def add_table(slide, element_data: dict, style_manager: PresentationStyle):
         shape = slide.shapes.add_table(num_rows, num_cols, x, y, width, height)
         table = shape.table
 
-        # 设置列宽和行高 (可以根据需要进行更复杂的计算)
         for c in range(num_cols):
             table.columns[c].width = int(width / num_cols)
         for r in range(num_rows):
@@ -337,23 +400,20 @@ def add_table(slide, element_data: dict, style_manager: PresentationStyle):
         header_color = hex_to_rgb(style.get('header_color')) if 'header_color' in style else style_manager.primary
         row_colors = [hex_to_rgb(c) for c in style.get('row_colors', [])]
 
-        # 填充表头
         for i, header in enumerate(headers):
             cell = table.cell(0, i)
             cell.text = header
             cell.fill.solid()
             cell.fill.fore_color.rgb = header_color
             p = cell.text_frame.paragraphs[0]
-            p.font.color.rgb = RGBColor(255, 255, 255)  # 白色文字
+            p.font.color.rgb = RGBColor(255, 255, 255)
             p.font.bold = True
             p.font.name = style_manager.heading_font
 
-        # 填充数据行
         for r, row_data in enumerate(rows_data):
             for c, cell_data in enumerate(row_data):
                 cell = table.cell(r + 1, c)
                 cell.text = str(cell_data)
-                # 应用斑马条纹
                 if row_colors:
                     cell.fill.solid()
                     cell.fill.fore_color.rgb = row_colors[r % len(row_colors)]
