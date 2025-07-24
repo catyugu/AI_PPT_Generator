@@ -4,12 +4,12 @@ import json
 import os
 import shutil
 import atexit
-from datetime import datetime  # 引入 datetime 模块
+from datetime import datetime
 from ai_service import generate_presentation_plan
 from ppt_builder.presentation import PresentationBuilder
 from config import OUTPUT_DIR
 
-# 配置日志，force=True确保在任何情况下都能覆盖默认配置
+# 配置日志
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', force=True)
 
 # 定义临时目录和输出目录
@@ -17,7 +17,7 @@ TEMP_DIR = "temp"
 
 
 def cleanup_temp_dir():
-    """清理临时目录。如果目录存在，则删除它。"""
+    """清理临时目录。"""
     if os.path.exists(TEMP_DIR):
         try:
             shutil.rmtree(TEMP_DIR)
@@ -32,18 +32,23 @@ def ensure_dirs_exist():
     os.makedirs(TEMP_DIR, exist_ok=True)
 
 
-def generate_single_ppt(theme: str, num_pages: int, output_file: str):
-    """为单个主题生成演示文稿。"""
-    logging.info(f"主题: '{theme}', 页数: {num_pages}, 输出文件: '{output_file}'")
+def generate_single_ppt(theme: str, num_pages: int, output_file: str, aspect_ratio: str):
+    """
+    为单个主题生成演示文稿。
+    [已更新] 新增 aspect_ratio 参数。
+    """
+    logging.info(f"主题: '{theme}', 页数: {num_pages}, 宽高比: {aspect_ratio}, 输出文件: '{output_file}'")
 
-    logging.info(f"正在请求AI为主题 '{theme}' 生成方案...")
-    plan = generate_presentation_plan(theme, num_pages)
+    logging.info(f"正在请求AI为主题 '{theme}' 生成 ({aspect_ratio}) 方案...")
+    # 将宽高比传递给AI服务
+    plan = generate_presentation_plan(theme, num_pages, aspect_ratio)
 
     if plan:
         logging.info("AI方案生成成功，开始构建演示文稿。")
         try:
             full_output_path = os.path.join(OUTPUT_DIR, output_file)
-            builder = PresentationBuilder(plan)
+            # 将宽高比传递给构建器
+            builder = PresentationBuilder(plan, aspect_ratio)
             builder.build_presentation(full_output_path)
             logging.info(f"演示文稿生成完成，已保存至 {full_output_path}")
             return True
@@ -57,11 +62,7 @@ def generate_single_ppt(theme: str, num_pages: int, output_file: str):
 
 def get_formatted_filename(base_name: str) -> str:
     """根据基础名称生成带有时间戳的文件名。"""
-    # 移除可能存在的 .pptx 后缀，以防重复
-    base_name = base_name.removesuffix('.pptx')
-    # 清理文件名中的非法字符
-    sanitized_base_name = base_name.replace(' ', '_').replace('/', '_').replace('\\', '_')
-    # 获取当前时间并格式化
+    sanitized_base_name = base_name.removesuffix('.pptx').replace(' ', '_').replace('/', '_').replace('\\', '_')
     timestamp = datetime.now().strftime("%Y%m%d-%H%M")
     return f"{sanitized_base_name}_{timestamp}.pptx"
 
@@ -78,6 +79,14 @@ def main():
     parser.add_argument("--pages", type=int, default=10, help="演示文稿的页数。")
     parser.add_argument("--output", type=str, help="演示文稿的输出文件名 (单次模式, 无需后缀和时间戳)。")
     parser.add_argument("--batch", type=str, help="用于批量处理的JSON文件路径。")
+    # --- [核心修改] 新增命令行参数 ---
+    parser.add_argument(
+        "--aspect_ratio",
+        type=str,
+        default="16:9",
+        choices=["16:9", "4:3"],
+        help="演示文稿的宽高比 (可选 '16:9' 或 '4:3')。"
+    )
     args = parser.parse_args()
 
     if args.batch:
@@ -95,11 +104,12 @@ def main():
                     continue
 
                 pages = task.get("pages", args.pages)
-                # **[修改]** 使用 task 中定义的 output 或 theme 作为基础名，生成带时间戳的文件名
+                # 优先使用任务中定义的宽高比，否则使用命令行的默认值
+                aspect_ratio = task.get("aspect_ratio", args.aspect_ratio)
                 base_name = task.get("output", theme)
                 output_filename = get_formatted_filename(base_name)
 
-                generate_single_ppt(theme, pages, output_filename)
+                generate_single_ppt(theme, pages, output_filename, aspect_ratio)
 
         except FileNotFoundError:
             logging.error(f"批量处理文件未找到: {args.batch}")
@@ -110,10 +120,10 @@ def main():
 
     elif args.theme:
         logging.info("--- 开始单次生成PPT任务 ---")
-        # **[修改]** 使用命令行参数中的 output 或 theme 作为基础名，生成带时间戳的文件名
         base_name = args.output if args.output else args.theme
         output_filename = get_formatted_filename(base_name)
-        generate_single_ppt(args.theme, args.pages, output_filename)
+        # 在单次任务中传递宽高比
+        generate_single_ppt(args.theme, args.pages, output_filename, args.aspect_ratio)
     else:
         logging.warning("未指定操作。请使用 --theme 进行单次生成，或使用 --batch 进行批量处理。")
         parser.print_help()

@@ -1,6 +1,7 @@
 import logging
 import re
 
+from PIL import Image
 from pptx.util import Pt
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.chart.data import ChartData
@@ -99,21 +100,73 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
         logging.info(f"添加文本框 (字体: {font_name}): '{content[:30]}...'")
     except Exception as e:
         logging.error(f"添加文本框时出错: {e} | 原始元素数据: {element_data}", exc_info=True)
+
+
 def add_image(slide, image_path: str, element_data: dict):
-    """添加图片。"""
+    """
+    [已更新] 添加图片并智能裁剪以适应图框，避免拉伸。
+    该函数会保持图片的原始宽高比，通过裁剪多余部分来填充指定的图框区域。
+    """
     try:
-        x, y, width, height = map(px_to_emu, [
+        if not image_path:
+            logging.warning("图片路径为空，跳过添加图片。")
+            return
+
+        box_x, box_y, box_width, box_height = [
             element_data.get('x', 0), element_data.get('y', 0),
             element_data.get('width', 1280), element_data.get('height', 720)
-        ])
-        slide.shapes.add_picture(image_path, x, y, width, height)
-        logging.info(f"从路径添加图片: {image_path}")
+        ]
+        box_x_emu, box_y_emu, box_width_emu, box_height_emu = map(px_to_emu, [box_x, box_y, box_width, box_height])
+
+        # 初始时，将图片添加到幻灯片上，尺寸与图框相同（这会导致暂时拉伸）
+        pic = slide.shapes.add_picture(image_path, box_x_emu, box_y_emu, width=box_width_emu, height=box_height_emu)
+
+        # --- 核心裁剪逻辑 ---
+        # 读取图片原始尺寸
+        with Image.open(image_path) as img:
+            img_width_px, img_height_px = img.size
+
+        # 计算宽高比
+        # 避免除以零的错误
+        if img_height_px == 0 or box_height == 0:
+            logging.warning(f"图片或图框高度为零，无法计算宽高比，跳过裁剪: {image_path}")
+            return
+
+        img_aspect = img_width_px / img_height_px
+        box_aspect = box_width / box_height
+
+        # 比较宽高比，决定如何裁剪
+        # 使用 round 避免浮点数精度问题
+        if round(img_aspect, 2) != round(box_aspect, 2):
+            if img_aspect > box_aspect:
+                # 图片比图框更“宽”，需要裁剪左右两边
+                # 新的裁剪比例计算公式: (1 - 目标宽高比 / 图片宽高比) / 2
+                crop_ratio = (1 - box_aspect / img_aspect) / 2
+                pic.crop_left = crop_ratio
+                pic.crop_right = crop_ratio
+                pic.crop_top = 0
+                pic.crop_bottom = 0
+            else:
+                # 图片比图框更“高”，需要裁剪上下两边
+                crop_ratio = (1 - img_aspect / box_aspect) / 2
+                pic.crop_top = crop_ratio
+                pic.crop_bottom = crop_ratio
+                pic.crop_left = 0
+                pic.crop_right = 0
+
+        logging.info(f"从路径添加并智能裁剪图片: {image_path}")
+
+    except FileNotFoundError:
+        logging.error(f"图片文件未找到: {image_path}")
     except Exception as e:
-        logging.error(f"添加图片 {image_path} 时出错: {e}", exc_info=True)
+        logging.error(f"添加或裁剪图片 {image_path} 时出错: {e}", exc_info=True)
+
 
 
 def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
-    """添加形状并应用样式。"""
+    """
+    [已更新] 添加形状并应用样式，增加对无效颜色值的容错处理。
+    """
     try:
         x, y, width, height = map(px_to_emu, [
             element_data.get('x', 50), element_data.get('y', 50),
@@ -133,25 +186,38 @@ def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
             fill.gradient()
             for i, hex_color in enumerate(grad_info.get('colors', [])):
                 if i < len(fill.gradient_stops):
-                    fill.gradient_stops[i].color.rgb = hex_to_rgb(hex_color)
+                    try:
+                        fill.gradient_stops[i].color.rgb = hex_to_rgb(hex_color)
+                    except (ValueError, IndexError):
+                        logging.warning(f"形状渐变中提供了无效的十六进制颜色 '{hex_color}'。将使用默认黑色。")
+                        fill.gradient_stops[i].color.rgb = RGBColor(0, 0, 0)
             logging.info("为形状应用了渐变填充。")
         elif 'fill_color' in style and style['fill_color'] is not None:
             fill.solid()
-            fill.fore_color.rgb = hex_to_rgb(style['fill_color'])
+            try:
+                fill.fore_color.rgb = hex_to_rgb(style['fill_color'])
+            except (ValueError, IndexError):
+                logging.warning(f"形状填充中提供了无效的十六进制颜色 '{style['fill_color']}'。将使用默认黑色。")
+                fill.fore_color.rgb = RGBColor(0, 0, 0)
         else:
             fill.background()  # 无填充
 
         # 边框样式
         if border_style := style.get('border'):
-            line.color.rgb = hex_to_rgb(border_style.get('color', '#000000'))
-            line.width = Pt(border_style.get('width', 1))
+            try:
+                line_color_hex = border_style.get('color', '#000000')
+                line.color.rgb = hex_to_rgb(line_color_hex)
+                line.width = Pt(border_style.get('width', 1))
+            except (ValueError, IndexError):
+                logging.warning(f"形状边框中提供了无效的十六进制颜色 '{line_color_hex}'。将使用默认黑色边框。")
+                line.color.rgb = RGBColor(0, 0, 0)
+                line.width = Pt(border_style.get('width', 1))
         else:
             line.fill.background()  # 无边框
 
         logging.info(f"添加 {shape_type_str} 形状。")
     except Exception as e:
-        logging.error(f"添加形状时出错: {e}", exc_info=True)
-
+        logging.error(f"添加形状时发生意外错误: {e}", exc_info=True)
 
 def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
     """添加图表并使用主题颜色进行样式化。"""

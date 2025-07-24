@@ -1,112 +1,31 @@
 [
     {
-        "theme": "新产品上市发布会方案",
-        "pages": 22,
-        "output": "新产品上市发布会方案.pptx"
+        "theme": "新产品上市发布会方案（宽屏）",
+        "pages": 12,
+        "output": "新产品发布会-16x9",
+        "aspect_ratio": "16:9"
     },
     {
-        "theme": "企业年度财务报告与分析",
-        "pages": 25,
-        "output": "企业年度财务报告与分析.pptx"
+        "theme": "企业年度财务报告与分析（标准屏）",
+        "pages": 15,
+        "output": "年度财报-4x3",
+        "aspect_ratio": "4:3"
     },
     {
         "theme": "项目启动会（Project Kick-off）",
-        "pages": 18,
-        "output": "项目启动会.pptx"
+        "pages": 10,
+        "output": "项目启动会"
     },
     {
         "theme": "初创公司融资路演（Pitch Deck）",
-        "pages": 20,
-        "output": "初创公司融资路演.pptx"
+        "pages": 12,
+        "output": "融资路演-16x9",
+        "aspect_ratio": "16:9"
     },
     {
-        "theme": "季度业务复盘（QBR）",
-        "pages": 24,
-        "output": "季度业务复盘报告.pptx"
-    },
-    {
-        "theme": "社交媒体营销活动策划",
-        "pages": 19,
-        "output": "社交媒体营销活动策划.pptx"
-    },
-    {
-        "theme": "人工智能（AI）在行业中的应用",
-        "pages": 22,
-        "output": "AI行业应用分析报告.pptx"
-    },
-    {
-        "theme": "客户旅程地图与体验优化",
-        "pages": 17,
-        "output": "客户旅程地图分析.pptx"
-    },
-    {
-        "theme": "企业文化与员工培训手册",
-        "pages": 25,
-        "output": "企业文化与员工培训.pptx"
-    },
-    {
-        "theme": "竞争对手市场分析报告",
-        "pages": 21,
-        "output": "竞争对手市场分析报告.pptx"
-    },
-    {
-        "theme": "SaaS产品功能介绍与优势",
-        "pages": 16,
-        "output": "SaaS产品功能介绍.pptx"
-    },
-    {
-        "theme": "电商平台运营策略",
-        "pages": 23,
-        "output": "电商平台运营策略.pptx"
-    },
-    {
-        "theme": "大数据与商业智能（BI）解决方案",
-        "pages": 20,
-        "output": "大数据与BI解决方案.pptx"
-    },
-    {
-        "theme": "企业可持续发展（ESG）战略规划",
-        "pages": 24,
-        "output": "企业ESG战略规划报告.pptx"
-    },
-    {
-        "theme": "在线教育课程开发方案",
-        "pages": 18,
-        "output": "在线教育课程开发方案.pptx"
-    },
-    {
-        "theme": "内容营销与品牌故事塑造",
-        "pages": 19,
-        "output": "内容营销与品牌故事.pptx"
-    },
-    {
-        "theme": "云计算迁移项目计划",
-        "pages": 22,
-        "output": "云计算迁移项目计划.pptx"
-    },
-    {
-        "theme": "敏捷开发流程与项目管理",
-        "pages": 17,
-        "output": "敏捷开发流程介绍.pptx"
-    },
-    {
-        "theme": "用户增长策略（Growth Hacking）",
-        "pages": 21,
-        "output": "用户增长策略分析.pptx"
-    },
-    {
-        "theme": "网络安全意识普及培训",
-        "pages": 16,
-        "output": "网络安全意识培训.pptx"
-    },
-    {
-        "theme": "供应链管理与优化方案",
-        "pages": 23,
-        "output": "供应链管理与优化方案.pptx"
-    },
-    {
-        "theme": "领导力发展与团队建设",
-        "pages": 20,
-        "output": "领导力发展与团队建设.pptx"
+        "theme": "网络安全意识普及培训（标准屏）",
+        "pages": 10,
+        "output": "网络安全培训-4x3",
+        "aspect_ratio": "4:3"
     }
 ]

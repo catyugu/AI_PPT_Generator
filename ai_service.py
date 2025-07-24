@@ -45,7 +45,7 @@ def _extract_json_from_response(text: str) -> str | None:
         return None
 
 
-def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
+def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "16:9")  -> dict | None:
     """使用OneAPI为演示文稿生成详细的JSON计划。"""
     if not client:
         logging.error("OneAPI client not initialized.")
@@ -53,6 +53,11 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
 
     # 直接使用从 config.py 导入的模型名称
     logging.info(f"Requesting plan from model '{MODEL_NAME}' via OneAPI...")
+    if aspect_ratio == "4:3":
+        canvas_width, canvas_height = 1024, 768
+    else: # 默认为 16:9
+        canvas_width, canvas_height = 1280, 720
+
 
     # [核心修改] 更新了Prompt，赋予AI更灵活的字体控制权
     prompt = f"""
@@ -92,14 +97,15 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
 
     #### **元素 (Element) 定义**
 
-    **所有元素都必须包含** `type`, `x`, `y`, `width`, `height` 这五个基本属性 (单位: px, 基于 1280x720 的画布)。
+    **所有元素都必须包含** `type`, `x`, `y`, `width`, `height` 这五个基本属性。
+    **重要：所有坐标和尺寸都必须基于一个 {canvas_width}x{canvas_height} 像素的画布进行设计。**
 
     1.  **`text_box`**
         * `type`: "text_box"
         * `content`: (字符串) 文本内容，支持用 `\\n` 换行。
         * `style`: (对象)
             * `font`: (对象)
-                * `name`: (字符串, 可选) **直接指定字体名称** (如 "楷体", "站酷高端黑")。**如果提供此项，将优先使用，并忽略下面的 `type` 字段。**
+                * `name`: (字符串, 可选) **直接指定字体名称** (如 "黑体", "微软雅黑")。**如果提供此项，将优先使用，并忽略下面的 `type` 字段。**
                 * `type`: (字符串, 可选) "heading" 或 "body"。如果未指定 `name`，则会根据此类型调用全局 `font_pairing` 中定义的默认字体。
                 * `size`: (数字) 字号 (pt)。
                 * `color`: (字符串, Hex, 可选) 局部覆盖全局文本颜色。
@@ -125,8 +131,12 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
 
     4.  **`chart`**
         * `type`: "chart"
-        * `chart_type`: (字符串) 可选值: `bar`, `pie`, `line`。
-        * `data`: (对象) 包含 `categories` 和 `series`。
+        * `chart_type`: (字符串) 图表类型。可选值: `bar` (柱状图), `pie` (饼图), `line` (折线图)。
+        * `data`: (对象)
+            * `categories`: (字符串数组) 类别轴标签。
+            * `series`: (对象数组) 每个对象是一组数据序列。
+                * `name`: (字符串) 名称。
+                * `values`: (数字数组) 数据值。
 
     5.  **`table`**
         * `type`: "table"
@@ -141,10 +151,12 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
     1.  **布局多样性 (Layout Variety)**: **必须**混合使用多种 `layout_type`。**严禁**连续超过两页使用完全相同的简单布局。
     2.  **视觉元素丰富度 (Visual Richness)**: **每一张内容页都应至少包含一个视觉元素** (`image`, `shape`, `chart`, `table`)。
     3.  **设计系统贯穿始终 (Consistent Design System)**: 全局定义的 `color_palette` 和 `font_pairing` **必须**被应用到所有页面。
-    4.  **字体选择的策略 (Font Strategy)**:
-        * **优先创意**: 你可以为标题、引用等特殊文本使用 `font.name` 来指定富有表现力的字体，以增强设计感。
-        * **保证可读**: 对于大段的正文，如果没有特别的设计需求，可以不指定 `font.name`，系统将自动使用全局 `font_pairing` 中定义的默认 `body` 字体，以确保可读性。
-        * **确保泛用**: 你选择的字体应该是在大部分现代操作系统中（Windows, macOS）常见或易于获取的，例如 "微软雅黑", "苹方", "思源黑体", "楷体", "宋体" 等。
+    4.  **字体策略 (Font Strategy)**:
+            * **优先使用推荐字体**: 为了保证最佳兼容性，请**严格从以下列表中选择字体**。这些字体在绝大多数现代操作系统中都可用。
+            * **中文推荐**: **微软雅黑 (Microsoft YaHei)**, **宋体 (SimSun)**, **黑体 (SimHei)**, **楷体 (KaiTi)**, **仿宋 (FangSong)**, **等线 (Dengxian)**。
+            * **英文推荐**: **Arial**, **Calibri**, **Times New Roman**, **Verdana**, **Georgia**。
+            * **创意与兜底**: 你可以为标题、引用等特殊文本使用列表中的字体进行创意组合。对于大段正文，如果没有特别的设计需求，使用 "微软雅黑" 或 "等线" 是最安全的选择。
+            * **严格禁止**: 请**绝对不要使用** "思源黑体 (Source Han Sans)", "思源宋体 (Source Han Serif)", "苹方 (PingFang SC)" 或任何其他需要用户额外安装的字体。
     5.  **切勿在`content`字段的文本中使用任何Markdown语法**。
     6.  **所有的文本样式（如加粗）都必须通过`style`对象中的对应属性（如 `"bold": true`）来定义。**
     7.  **你的PPT页数应该严格与用户要求的页数一致**
@@ -154,53 +166,55 @@ def generate_presentation_plan(theme: str, num_pages: int) -> dict | None:
 
     ### **第四部分：输出样例**
 
-    #### **样例（展示字体控制）**
+    #### **样例一：科技商务风PPT (含图表)**
+    
+    {{
+      "design_concept": "深蓝智域：数据与洞察",
+      "font_pairing": {{ "heading": "Microsoft YaHei Heavy", "body": "Microsoft YaHei" }},
+      "color_palette": {{ "primary": "#0D47A1", "secondary": "#1976D2", "background": "#FFFFFF", "text": "#212121", "accent": "#4CAF50" }},
+      "master_slide": {{
+        "background": {{ "color": "#FFFFFF" }},
+        "footer": {{ "text": "ABC科技有限公司 | 内部资料", "style": {{ "x": 60, "y": 680, "width": 500, "height": 20, "font_size": 10, "color": "#757575" }} }}
+      }},
+      "pages": [
+        {{
+          "layout_type": "title_slide",
+          "elements": [
+            {{ "type": "shape", "shape_type": "rectangle", "x": 0, "y": 200, "width": 1280, "height": 320, "style": {{ "fill_color": "#0D47A1" }} }},
+            {{ "type": "text_box", "x": 80, "y": 280, "width": 1120, "height": 100, "content": "2025年度市场增长战略报告", "style": {{ "font": {{ "type": "heading", "size": 48, "color": "#FFFFFF", "bold": true }}, "alignment": "CENTER" }} }},
+            {{ "type": "text_box", "x": 80, "y": 390, "width": 1120, "height": 40, "content": "数据驱动，洞见未来", "style": {{ "font": {{ "type": "body", "size": 22, "color": "#BDBDBD" }}, "alignment": "CENTER" }} }}
+          ]
+        }},
+        {{
+          "layout_type": "data_chart_summary",
+          "elements": [
+            {{ "type": "text_box", "x": 60, "y": 60, "width": 1160, "height": 50, "content": "季度销售额对比分析", "style": {{ "font": {{ "type": "heading", "size": 32, "bold": true }} }} }},
+            {{ "type": "chart", "x": 60, "y": 140, "width": 1160, "height": 500, "chart_type": "bar", "data": {{ "categories": ["第一季度", "第二季度", "第三季度", "第四季度"], "series": [ {{ "name": "2024年", "values": [450, 520, 580, 650] }}, {{ "name": "2025年预测", "values": [500, 590, 670, 750] }} ] }} }}
+          ]
+        }}
+      ]
+    }}
 
+    #### **样例二：人文艺术风PPT (含自定义字体)**
+    
     {{
       "design_concept": "墨韵留白：东方美学的现代诠释",
-      "font_pairing": {{
-        "heading": "思源宋体 CN",
-        "body": "思源黑体 CN"
-      }},
-      "color_palette": {{
-        "primary": "#212121", "secondary": "#757575", "background": "#F5F5F5", "text": "#424242", "accent": "#C62828"
-      }},
-      "master_slide": {{
-        "background": {{ "image_keyword": "chinese ink wash painting minimalist background" }}
-      }},
+      "font_pairing": {{ "heading": "SimSun", "body": "KaiTi" }},
+      "color_palette": {{ "primary": "#212121", "secondary": "#757575", "background": "#F5F5F5", "text": "#424242", "accent": "#C62828" }},
+      "master_slide": {{ "background": {{ "image_keyword": "chinese ink wash painting minimalist background" }} }},
       "pages": [
         {{
           "layout_type": "full_screen_image_with_quote",
           "elements": [
             {{ "type": "image", "x": 0, "y": 0, "width": 1280, "height": 720, "image_keyword": "lonely boat on calm water black and white", "style": {{ "opacity": 0.8 }} }},
-            {{ "type": "text_box", "x": 100, "y": 500, "width": 600, "height": 150, "content": "“天地有大美而不言”", "style": {{
-              "font": {{
-                "name": "行楷",
-                "size": 44,
-                "color": "#FFFFFF",
-                "italic": true
-              }},
-              "alignment": "LEFT"
-            }} }}
-          ]
-        }},
-        {{
-          "layout_type": "image_left_content_right",
-          "elements": [
-            {{ "type": "image", "x": 80, "y": 120, "width": 450, "height": 450, "image_keyword": "zen stone garden detail", "style": {{ "crop": {{ "shape": "circle" }} }} }},
-            {{ "type": "text_box", "x": 600, "y": 180, "width": 600, "height": 80, "content": "静观", "style": {{
-              "font": {{ "type": "heading", "size": 36, "bold": true }}
-            }} }},
-            {{ "type": "text_box", "x": 600, "y": 280, "width": 600, "height": 300, "content": "在纷繁的世界里，\\n寻一方内心的宁静。\\n一石一木，皆是禅意。", "style": {{
-              "font": {{ "type": "body", "size": 22 }}, "alignment": "LEFT"
-            }} }}
+            {{ "type": "text_box", "x": 100, "y": 500, "width": 600, "height": 150, "content": "“天地有大美而不言”", "style": {{ "font": {{ "name": "行楷", "size": 44, "color": "#FFFFFF", "italic": true }}, "alignment": "LEFT" }} }}
           ]
         }}
       ]
     }}
 
     **最后指令：**
-    现在，请**回顾并严格遵守以上所有部分的规则**，为主题 **“{theme}”** 生成一个包含 **{num_pages}** 页的完整PPT设计方案JSON。
+    现在，请**回顾并严格遵守以上所有部分的规则**，为主题 **“{theme}”** 生成一个包含 **{num_pages}** 页，宽为{canvas_width}，高为{canvas_height}的完整PPT设计方案JSON。的完整PPT设计方案JSON。
     """
 
     try:
