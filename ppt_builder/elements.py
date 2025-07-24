@@ -338,39 +338,42 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
             p.font.size, p.font.bold = Pt(20), True
             p.font.color.rgb = style_manager.text_color
             p.font.name = style_manager.heading_font
-        if chart.has_legend:
-            chart.legend.position, chart.legend.include_in_layout = XL_LEGEND_POSITION.BOTTOM, False
-            chart.legend.font.size = Pt(12)
-            chart.legend.font.color.rgb = style_manager.text_color
+
+        # [最终修复] 强制为图表创建图例
+        chart.has_legend = True
+        chart.legend.position, chart.legend.include_in_layout = XL_LEGEND_POSITION.BOTTOM, False
+        chart.legend.font.size = Pt(12)
+        chart.legend.font.color.rgb = style_manager.text_color
 
         # --- 2. 绘图区和数据标签 ---
         plot = chart.plots[0]
-        plot.vary_by_categories = False
+        # 仅对非饼图设置 vary_by_categories = False
+        if chart_type != XL_CHART_TYPE.PIE:
+            plot.vary_by_categories = False
+
         plot.has_data_labels = True
         data_labels = plot.data_labels
         data_labels.font.size, data_labels.font.bold = Pt(14), True
         data_labels.font.color.rgb = RGBColor(255, 255,
                                               255) if chart_type == XL_CHART_TYPE.PIE else style_manager.text_color
-        # 饼图专用数据标签设置
         if chart_type == XL_CHART_TYPE.PIE:
             data_labels.show_percentage = True
             data_labels.number_format = '0%'
 
         # --- 3. [核心] 系列的深度样式化 ---
-        # A & B: 柱状图和折线图的系列级样式
         if chart_type in [XL_CHART_TYPE.COLUMN_CLUSTERED, XL_CHART_TYPE.LINE]:
             for i, series in enumerate(getattr(plot, 'series', [])):
                 series_color = style_manager.get_chart_color(i)
+                series.format.fill.solid()
+                series.format.fill.fore_color.rgb = series_color
 
+                line = series.format.line
                 if chart_type == XL_CHART_TYPE.COLUMN_CLUSTERED:
-                    series.format.fill.solid()
-                    series.format.fill.fore_color.rgb = series_color
-                    series.format.line.color.rgb = RGBColor(255, 255, 255)
-                    series.format.line.width = Pt(0.75)
-
+                    line.color.rgb = RGBColor(255, 255, 255)
+                    line.width = Pt(0.75)
                 elif chart_type == XL_CHART_TYPE.LINE:
-                    series.format.line.color.rgb = series_color
-                    series.format.line.width = Pt(2.5)
+                    line.color.rgb = series_color
+                    line.width = Pt(2.5)
                     series.smooth = True
                     marker = series.marker
                     marker.style, marker.size = XL_MARKER_STYLE.CIRCLE, 8
@@ -379,13 +382,11 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
                     marker.format.line.color.rgb = RGBColor(255, 255, 255)
                     marker.format.line.width = Pt(1.0)
 
-        # C: 饼图的数据点级样式
-        if chart_type == XL_CHART_TYPE.PIE and hasattr(plot, 'series') and plot.series:
+        elif chart_type == XL_CHART_TYPE.PIE and hasattr(plot, 'series') and plot.series:
             for j, point in enumerate(plot.series[0].points):
                 point_color = style_manager.get_chart_color(j)
                 point.format.fill.solid()
                 point.format.fill.fore_color.rgb = point_color
-                # [最终修复] 为饼图扇区添加边框
                 point.format.line.color.rgb = RGBColor(255, 255, 255)
                 point.format.line.width = Pt(1.5)
 
@@ -400,7 +401,6 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
         logging.info("成功添加并深度美化了图表。")
     except Exception as e:
         logging.error(f"添加图表时出错: {e}", exc_info=True)
-
 
 
 def add_table(slide, element_data: dict, style_manager: PresentationStyle):
