@@ -86,7 +86,6 @@ def main():
     parser = argparse.ArgumentParser(description="AI PPT Generator")
     parser.add_argument("--theme", type=str, help="演示文稿的主题 (单次模式)。")
     parser.add_argument("--pages", type=int, default=10, help="演示文稿的页数。")
-    # [已移除] --output 参数不再需要
     parser.add_argument("--batch", type=str, help="用于批量处理的JSON文件路径。")
     parser.add_argument(
         "--aspect_ratio",
