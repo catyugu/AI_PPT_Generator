@@ -7,11 +7,19 @@ from image_service import ImageService
 
 
 class PresentationBuilder:
-    """根据AI生成的计划构建完整的演示文稿。"""
+    """
+    [已更新] 根据AI生成的计划构建完整的演示文稿，并支持不同宽高比。
+    """
 
-    def __init__(self, plan: dict):
+    def __init__(self, plan: dict, aspect_ratio: str = "16:9"):
+        """
+        初始化构建器。
+        :param plan: AI生成的JSON方案。
+        :param aspect_ratio: 演示文稿的宽高比 ('16:9' 或 '4:3')。
+        """
         self.plan = plan
         self.prs = Presentation()
+        self.aspect_ratio = aspect_ratio # 存储宽高比
         self.style_manager = PresentationStyle(plan)
         self.image_service = ImageService()
 
@@ -28,13 +36,10 @@ class PresentationBuilder:
             self.style_manager,
             self.background_image_path
         )
-        logging.info("PresentationBuilder已使用AI方案和StyleManager初始化。")
+        logging.info(f"PresentationBuilder已为 {self.aspect_ratio} 演示文稿初始化。")
 
     def _apply_master_slide_styles(self):
-        """
-        [已简化] 应用全局母版样式。
-        此函数现在只负责处理背景颜色，图片背景由SlideRenderer在每页幻灯片上应用。
-        """
+        """应用全局母版样式。"""
         master = self.prs.slide_masters[0]
         master_data = self.plan.get('master_slide', {})
         background_info = master_data.get('background', {})
@@ -62,15 +67,22 @@ class PresentationBuilder:
     def build_presentation(self, output_path: str):
         """构建并保存演示文稿。"""
         try:
-            self.prs.slide_width = px_to_emu(1280)
-            self.prs.slide_height = px_to_emu(720)
+            # --- [核心修改] 根据宽高比设置幻灯片尺寸 ---
+            if self.aspect_ratio == "4:3":
+                self.prs.slide_width = px_to_emu(1024)
+                self.prs.slide_height = px_to_emu(768)
+                logging.info("已将演示文稿尺寸设置为 4:3 (1024x768)。")
+            else: # 默认为 16:9
+                self.prs.slide_width = px_to_emu(1280)
+                self.prs.slide_height = px_to_emu(720)
+                logging.info("已将演示文稿尺寸设置为 16:9 (1280x720)。")
+
             self._apply_master_slide_styles()
 
             pages = self.plan.get('pages', [])
             total_pages = len(pages)
             for i, page_data in enumerate(pages):
                 logging.info(f"--- 正在构建页面 {i + 1}/{total_pages} ---")
-                # **[已修复]** 在此处调用 render_slide 时，传入 self.image_service
                 self.slide_renderer.render_slide(page_data, self.image_service)
 
             self.prs.save(output_path)
