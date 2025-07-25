@@ -2,12 +2,15 @@ import logging
 import os
 
 from pptx import Presentation
+# 确保 elements 模块被正确导入
 from ppt_builder import elements
 from ppt_builder.styles import PresentationStyle, px_to_emu
 
+# --- 修改1：为icon元素添加图层顺序 ---
 ELEMENT_LAYER_ORDER = {
     'image': 0,
     'shape': 1,
+    'icon': 2,  # 将图标与图表、表格放在同一层级
     'chart': 2,
     'table': 2,
     'text_box': 3,  # 文本框永远在最上层
@@ -69,15 +72,11 @@ class SlideRenderer:
         # ===================== 核心修改：元素排序 =====================
         elements_to_render = slide_data.get('elements', [])
 
-        # 使用我们定义的图层顺序对元素列表进行排序
-        # key函数获取每个元素的类型，并在ELEMENT_LAYER_ORDER中查找对应的层级数字
-        # get的第二个参数是默认值，确保即使AI生成了未知的元素类型也不会报错
         elements_to_render.sort(
             key=lambda e: ELEMENT_LAYER_ORDER.get(e.get('type'), ELEMENT_LAYER_ORDER['default'])
         )
 
         logging.info("页面元素已按图层顺序重排，渲染开始...")
-        # ===================== 修改结束 ============================
 
         # 遍历排序后的列表进行渲染
         for element in elements_to_render:
@@ -106,6 +105,17 @@ class SlideRenderer:
                 elif element_type == 'table':
                     elements.add_table(slide, element, self.style_manager)
 
+                # --- 修改2：添加对icon类型的支持 ---
+                elif element_type == 'icon':
+                    # 调用elements模块中对应的add_icon函数
+                    # 我们需要传入 style_manager，以便函数可以访问主题颜色
+                    elements.add_icon(
+                        slide,
+                        element,
+                        (self.prs.slide_width, self.prs.slide_height),
+                        self.style_manager
+                    )
+                # -----------------------------------
                 else:
                     logging.warning(f"不支持的元素类型: '{element_type}'。")
 

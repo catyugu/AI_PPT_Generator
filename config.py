@@ -14,6 +14,7 @@ MODEL_NAME = "gemini-2.5-flash"  # 您可以换成更强大的模型，如 "gpt-
 
 # --- 输出配置 ---
 OUTPUT_DIR = "AI_Generated_PPTs"
+ICON_DIR = "assets/icons"
 
 # --- Helper Functions (可选，保持清晰) ---
 def get_env_variable(var_name: str, default: str = None) -> str | None:
