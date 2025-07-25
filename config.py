@@ -17,9 +17,9 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "YOUR_PEXELS_API_KEY_HERE")
 # - writer: 负责内容大纲撰写，建议使用知识渊博、逻辑性强的模型 (如 gemini-1.5-pro, gpt-4-turbo)
 # - planner: 负责单页布局，任务结构化，可以使用更快速、经济的模型 (如 gemini-1.5-flash, gpt-3.5-turbo)
 MODEL_CONFIG = {
-    "designer": "glm-4",
-    "writer": "glm-4",
-    "planner": "glm-4"
+    "designer": "glm-4-plus",
+    "writer": "glm-4-plus",
+    "planner": "glm-4-plus"
 }
 
 
