@@ -7,14 +7,14 @@ from ppt_builder import elements, animation
 from ppt_builder.styles import PresentationStyle, px_to_emu
 
 # --- 修改1：为icon元素添加图层顺序 ---
-ELEMENT_LAYER_ORDER = {
-    'image': 0,
-    'shape': 1,
-    'icon': 2,  # 将图标与图表、表格放在同一层级
-    'chart': 2,
-    'table': 2,
-    'text_box': 3,  # 文本框永远在最上层
-    'default': 0  # 为未知类型提供默认层级
+ELEMENT_DEFAULT_LAYER_ORDER = {
+    'image': 10,  # 图片通常在背景之上，但可能在形状之下
+    'shape': 20,  # 形状可以作为背景或蒙版，也可以在图片之上
+    'icon': 30,   # 图标通常在形状和图片之上
+    'chart': 40,  # 图表通常在图标之上
+    'table': 40,  # 表格通常在图标之上
+    'text_box': 50, # 文本框永远在最上层，确保可读性
+    'default': 0  # 为未知类型提供默认层级 (最底层)
 }
 
 
@@ -72,10 +72,11 @@ class SlideRenderer:
         # ===================== 核心修改：元素排序 =====================
         elements_to_render = slide_data.get('elements', [])
         shapes_map = {}
-        elements_to_render.sort(
-            key=lambda e: ELEMENT_LAYER_ORDER.get(e.get('type'), ELEMENT_LAYER_ORDER['default'])
-        )
 
+        # 根据z_index排序，如果z_index不存在则回退到默认层级
+        elements_to_render.sort(
+            key=lambda e: e.get('z_index', ELEMENT_DEFAULT_LAYER_ORDER.get(e.get('type'), ELEMENT_DEFAULT_LAYER_ORDER['default']))
+        )
         logging.info("页面元素已按图层顺序重排，渲染开始...")
 
         # 遍历排序后的列表进行渲染

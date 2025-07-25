@@ -96,6 +96,9 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
 
      #### **元素 (Element) 定义**
      **所有元素都必须包含** `type`, `x`, `y`, `width`, `height` 这五个基本属性。
+     
+     此外，所有元素**可以包含** `z_index` (数字, 可选) 属性，用于控制元素的堆叠顺序（图层）。`z_index`值越大，元素越靠上。如果未指定，系统将根据元素类型使用默认层级。
+     
      **重要：所有坐标和尺寸都必须基于一个 {canvas_width}x{canvas_height} 像素的画布进行设计。**
 
      1.  **`text_box`**
@@ -224,7 +227,7 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
 
     ### **第五部分：输出样例（已加入新功能）**
 
-    #### **样例一：团队介绍页 (使用圆形裁剪和半透明背景)**
+    #### **样例一：团队介绍页 (使用圆形裁剪、半透明背景和动画)**
 
     {{
       "design_concept": "盐系手帐：我们的故事",
@@ -235,20 +238,33 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
         {{
           "layout_type": "team_introduction",
           "elements": [
-            {{ "type": "text_box", "x": 100, "y": 80, "width": 1080, "height": 60, "content": "核心团队成员", "style": {{ "font": {{ "type": "heading", "size": 36, "bold": true }}, "alignment": "CENTER" }} }},
-            {{ "type": "image", "x": 240, "y": 200, "width": 150, "height": 150, "image_keyword": "professional portrait of a smiling young woman", "style": {{ "crop": "circle" }} }},
-            {{ "type": "text_box", "x": 215, "y": 360, "width": 200, "height": 60, "content": "张三\\n产品经理", "style": {{ "font": {{ "type": "body", "size": 16 }}, "alignment": "CENTER" }} }},
-            {{ "type": "image", "x": 565, "y": 200, "width": 150, "height": 150, "image_keyword": "professional portrait of a smiling young man", "style": {{ "crop": "circle" }} }},
-            {{ "type": "text_box", "x": 540, "y": 360, "width": 200, "height": 60, "content": "李四\\n首席设计师", "style": {{ "font": {{ "type": "body", "size": 16 }}, "alignment": "CENTER" }} }},
-            {{ "type": "image", "x": 890, "y": 200, "width": 150, "height": 150, "image_keyword": "professional portrait of a friendly woman software developer", "style": {{ "crop": "circle" }} }},
-            {{ "type": "text_box", "x": 865, "y": 360, "width": 200, "height": 60, "content": "王五\\n后端工程师", "style": {{ "font": {{ "type": "body", "size": 16 }}, "alignment": "CENTER" }} }},
-            {{ "type": "shape", "shape_type": "rectangle", "x": 0, "y": 550, "width": 1280, "height": 170, "style": {{ "fill_color": "#4A4A4A", "opacity": 0.1 }} }}
+            {{ "id": "page_title", "type": "text_box", "x": 100, "y": 80, "width": 1080, "height": 60, "content": "核心团队成员", "style": {{ "font": {{ "type": "heading", "size": 36, "bold": true }}, "alignment": "CENTER" }}, "z_index": 20 }},
+            {{ "id": "shape_bg", "type": "shape", "shape_type": "rectangle", "x": 0, "y": 550, "width": 1280, "height": 170, "style": {{ "fill_color": "#4A4A4A", "opacity": 0.1 }}, "z_index": 10 }},
+
+            {{ "id": "member1_image", "type": "image", "x": 240, "y": 200, "width": 150, "height": 150, "image_keyword": "professional portrait of a smiling young woman", "style": {{ "crop": "circle" }}, "z_index": 15 }},
+            {{ "id": "member1_text", "type": "text_box", "x": 215, "y": 360, "width": 200, "height": 60, "content": "张三\\n产品经理", "style": {{ "font": {{ "type": "body", "size": 16 }}, "alignment": "CENTER" }}, "z_index": 25 }},
+
+            {{ "id": "member2_image", "type": "image", "x": 565, "y": 200, "width": 150, "height": 150, "image_keyword": "professional portrait of a smiling young man", "style": {{ "crop": "circle" }}, "z_index": 15 }},
+            {{ "id": "member2_text", "type": "text_box", "x": 540, "y": 360, "width": 200, "height": 60, "content": "李四\\n首席设计师", "style": {{ "font": {{ "type": "body", "size": 16 }}, "alignment": "CENTER" }}, "z_index": 25 }},
+
+            {{ "id": "member3_image", "type": "image", "x": 890, "y": 200, "width": 150, "height": 150, "image_keyword": "professional portrait of a friendly woman software developer", "style": {{ "crop": "circle" }}, "z_index": 15 }},
+            {{ "id": "member3_text", "type": "text_box", "x": 865, "y": 360, "width": 200, "height": 60, "content": "王五\\n后端工程师", "style": {{ "font": {{ "type": "body", "size": 16 }}, "alignment": "CENTER" }}, "z_index": 25 }}
+          ],
+          "animation_sequence": [
+            {{ "element_id": "page_title", "animation": {{ "type": "fadeIn" }} }},
+            {{ "element_id": "shape_bg", "animation": {{ "type": "fadeIn", "duration_ms": 500 }} }},
+            {{ "element_id": "member1_image", "animation": {{ "type": "flyIn", "direction": "fromLeft" }} }},
+            {{ "element_id": "member1_text", "animation": {{ "type": "fadeIn", "duration_ms": 300 }} }},
+            {{ "element_id": "member2_image", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }},
+            {{ "element_id": "member2_text", "animation": {{ "type": "fadeIn", "duration_ms": 300 }} }},
+            {{ "element_id": "member3_image", "animation": {{ "type": "flyIn", "direction": "fromRight" }} }},
+            {{ "element_id": "member3_text", "animation": {{ "type": "fadeIn", "duration_ms": 300 }} }}
           ]
         }}
       ]
     }}
 
-    #### **样例二：功能介绍页 (使用项目符号列表)**
+    #### **样例二：功能介绍页 (使用项目符号列表和动画)**
 
     {{
       "design_concept": "夏日橘子汽水",
@@ -259,21 +275,27 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
         {{
           "layout_type": "image_left_content_right",
           "elements": [
-            {{ "type": "image", "x": 0, "y": 0, "width": 640, "height": 720, "image_keyword": "vibrant flat illustration of a mobile app interface" }},
-            {{ "type": "text_box", "x": 700, "y": 150, "width": 520, "height": 80, "content": "产品核心功能", "style": {{ "font": {{ "type": "heading", "size": 40, "bold": true }} }} }},
-            {{ "type": "text_box", "x": 700, "y": 250, "width": 520, "height": 300, 
+            {{ "id": "main_image", "type": "image", "x": 0, "y": 0, "width": 640, "height": 720, "image_keyword": "vibrant flat illustration of a mobile app interface", "z_index": 10 }},
+            {{ "id": "title_text", "type": "text_box", "x": 700, "y": 150, "width": 520, "height": 80, "content": "产品核心功能", "style": {{ "font": {{ "type": "heading", "size": 40, "bold": true }} }}, "z_index": 20 }},
+            {{ "id": "features_list", "type": "text_box", "x": 700, "y": 250, "width": 520, "height": 300, 
                "content": [
                  "AI智能规划：一句话生成完整演示文稿。",
                  "丰富的设计模板：覆盖多种行业和场景。",
                  "在线协同编辑：支持团队成员实时修改。",
                  "一键导出分享：轻松获取PPTX或PDF文件。"
                ],
-               "style": {{ "font": {{ "type": "body", "size": 22 }}, "alignment": "LEFT" }}
+               "style": {{ "font": {{ "type": "body", "size": 22 }}, "alignment": "LEFT" }}, "z_index": 20
             }}
+          ],
+          "animation_sequence": [
+            {{ "element_id": "main_image", "animation": {{ "type": "fadeIn", "duration_ms": 800 }} }},
+            {{ "element_id": "title_text", "animation": {{ "type": "flyIn", "direction": "fromTop" }} }},
+            {{ "element_id": "features_list", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }}
           ]
         }}
       ]
     }}
+    
     #### **样例三：带图标的核心优势页 (Icon-Enhanced Feature Page)**
 
     {{
@@ -346,6 +368,71 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
             {{ "element_id": "dimension_1_text", "animation": {{ "type": "fadeOut" }} }},
             {{ "element_id": "dimension_2_text", "animation": {{ "type": "fadeOut" }} }},
             {{ "element_id": "final_image", "animation": {{ "type": "fadeIn", "duration_ms": 1500 }} }}
+          ]
+        }}
+      ]
+    }}
+     #### **样例五：分层内容块（使用z-index）**
+
+     {{
+      "design_concept": "光影层次",
+      "font_pairing": {{ "heading": "微软雅黑", "body": "微软雅黑" }},
+      "color_palette": {{
+        "primary": "#333333",
+        "secondary": "#666666",
+        "background": "#F5F5F5",
+        "text": "#FFFFFF",
+        "accent": "#FF7043"
+      }},
+      "master_slide": {{
+        "background": {{ "color": "#F5F5F5" }}
+      }},
+      "pages": [
+        {{
+          "layout_type": "layered_content_block",
+          "elements": [
+            {{
+              "type": "image",
+              "x": 0, "y": 0, "width": 1280, "height": 720,
+              "image_keyword": "modern city skyline at sunset",
+              "z_index": 5,
+              "style": {{ "opacity": 0.9 }}
+            }},
+            {{
+              "type": "shape",
+              "shape_type": "rounded_rectangle",
+              "x": 100, "y": 120, "width": 500, "height": 450,
+              "style": {{
+                "fill_color": "#000000",
+                "opacity": 0.4
+              }},
+              "z_index": 15
+            }},
+            {{
+              "type": "text_box",
+              "x": 130, "y": 150, "width": 440, "height": 80,
+              "content": "光影之城",
+              "style": {{
+                "font": {{ "name": "微软雅黑", "size": 48, "bold": true, "color": "#FFFFFF" }},
+                "alignment": "LEFT"
+              }},
+              "z_index": 25
+            }},
+            {{
+              "type": "text_box",
+              "x": 130, "y": 250, "width": 440, "height": 280,
+              "content": [
+                "探索都市脉搏与自然光影的交织。",
+                "运用半透明背景块，在保证图片氛围感的同时，突出文字信息。",
+                "文本颜色与背景形成高对比度，确保在叠加层上的清晰可读性。",
+                "合理的z-index值分配，使得元素层级清晰，符合视觉逻辑。"
+              ],
+              "style": {{
+                "font": {{ "name": "微软雅黑", "size": 20, "color": "#FFFFFF" }},
+                "alignment": "LEFT"
+              }},
+              "z_index": 25
+            }}
           ]
         }}
       ]
