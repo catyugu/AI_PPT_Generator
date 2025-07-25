@@ -53,7 +53,8 @@ def _call_ai(prompt: str, model_name: str) -> dict | None:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.55
+            max_tokens=16000,
+            temperature=0.6
         )
         response_content = response.choices[0].message.content
         if response_content:
@@ -110,21 +111,21 @@ def _generate_design_system(theme: str) -> dict | None:
     #### 案例1: "盐系手帐"
     {{
       "design_concept": "盐系手帐：我们的故事",
-      "font_pairing": {{ "heading": "Dengxian", "body": "Dengxian" }},
+      "font_pairing": {{ "heading": "行楷", "body": "等线" }},
       "color_palette": {{ "primary": "#4A4A4A", "secondary": "#9B9B9B", "background": "#FDFBF8", "text": "#4A4A4A", "accent": "#F5A623" }}
     }}
 
     #### 案例2: "夏日橘子汽水"
     {{
       "design_concept": "夏日橘子汽水",
-      "font_pairing": {{ "heading": "Microsoft YaHei Light", "body": "Microsoft YaHei Light" }},
+      "font_pairing": {{ "heading": "黑体", "body": "等线" }},
       "color_palette": {{ "primary": "#FF6B6B", "secondary": "#FFD166", "background": "#FFFFFF", "text": "#4A4A4A", "accent": "#06D6A0" }}
     }}
 
     #### 案例3: "赛博蝴蝶梦"
     {{
         "design_concept": "赛博蝴蝶梦",
-        "font_pairing": {{ "heading": "Dengxian", "body": "Dengxian" }},
+        "font_pairing": {{ "heading": "行楷", "body": "等线" }},
         "color_palette": {{ "primary": "#7B1FA2", "secondary": "#CE93D8", "background": "#121212", "text": "#FFFFFF", "accent": "#F48FB1" }}
     }}
 
@@ -284,9 +285,8 @@ def _generate_slide_layout(page_content: dict, design_system: dict, page_index: 
          * `style`: (对象, 可选) 定义表头/行颜色等。
 
      6.  **`icon`** * `type`: "icon"
-         * `icon_keyword`: (字符串, 必须) 描述图标核心含义的**一个小写英文关键词**。**请严格从以下可用列表中选择图标关键词。** 这个关键词将直接用于查找对应的SVG图标文件（例如, `target.svg`）。
-         * **可用图标关键词列表**:
-             * `activity`, `airplay`, `alert-circle`, `alert-octagon`, `alert-triangle`, `align-center`, `align-justify`, `align-left`, `align-right`, `anchor`, `aperture`, `archive`, `arrow-down-circle`, `arrow-down-left`, `arrow-down-right`, `arrow-down`, `arrow-left-circle`, `arrow-left`, `arrow-right-circle`, `arrow-right`, `arrow-up-circle`, `arrow-up-left`, `arrow-up-right`, `arrow-up`, `at-sign`, `award`, `bar-chart-2`, `bar-chart`, `battery-charging`, `battery`, `bell-off`, `bell`, `bluetooth`, `bold`, `book-open`, `book`, `bookmark`, `box`, `briefcase`, `calendar`, `camera-off`, `camera`, `cast`, `check-circle`, `check-square`, `check`, `chevron-down`, `chevron-left`, `chevron-right`, `chevron-up`, `chevrons-down`, `chevrons-left`, `chevrons-right`, `chevrons-up`, `chrome`, `circle`, `clipboard`, `clock`, `cloud-drizzle`, `cloud-lightning`, `cloud-off`, `cloud-rain`, `cloud-snow`, `cloud`, `code`, `codepen`, `codesandbox`, `coffee`, `columns`, `command`, `compass`, `copy`, `corner-down-left`, `corner-down-right`, `corner-left-down`, `corner-left-up`, `corner-right-down`, `corner-right-up`, `corner-up-left`, `corner-up-right`, `cpu`, `credit-card`, `crop`, `crosshair`, `database`, `delete`, `disc`, `divide-circle`, `divide-square`, `divide`, `dollar-sign`, `download-cloud`, `download`, `dribbble`, `droplet`, `edit-2`, `edit-3`, `edit`, `external-link`, `eye-off`, `eye`, `facebook`, `fast-forward`, `feather`, `figma`, `file-minus`, `file-plus`, `file-text`, `file`, `film`, `filter`, `flag`, `folder-minus`, `folder-plus`, `folder`, `framer`, `frown`, `gift`, `git-branch`, `git-commit`, `git-merge`, `git-pull-request`, `github`, `gitlab`, `globe`, `grid`, `hard-drive`, `hash`, `headphones`, `heart`, `help-circle`, `hexagon`, `home`, `image`, `inbox`, `info`, `instagram`, `italic`, `key`, `layers`, `layout`, `life-buoy`, `link-2`, `link`, `linkedin`, `list`, `loader`, `lock`, `log-in`, `log-out`, `mail`, `map-pin`, `map`, `maximize-2`, `maximize`, `meh`, `menu`, `message-circle`, `message-square`, `mic-off`, `mic`, `minimize-2`, `minimize`, `minus-circle`, `minus-square`, `minus`, `monitor`, `moon`, `more-horizontal`, `more-vertical`, `mouse-pointer`, `move`, `music`, `navigation-2`, `navigation`, `octagon`, `package`, `paperclip`, `pause-circle`, `pause`, `pen-tool`, `percent`, `phone-call`, `phone-forwarded`, `phone-incoming`, `phone-missed`, `phone-off`, `phone-outgoing`, `phone`, `pie-chart`, `play-circle`, `play`, `plus-circle`, `plus-square`, `plus`, `pocket`, `power`, `printer`, `radio`, `refresh-ccw`, `refresh-cw`, `repeat`, `rewind`, `rotate-ccw`, `rotate-cw`, `rss`, `save`, `scissors`, `search`, `send`, `server`, `settings`, `share-2`, `share`, `shield-off`, `shield`, `shopping-bag`, `shopping-cart`, `shuffle`, `sidebar`, `skip-back`, `skip-forward`, `slack`, `slash`, `sliders`, `smartphone`, `smile`, `speaker`, `square`, `star`, `stop-circle`, `sun`, `sunrise`, `sunset`, `table`, `tablet`, `tag`, `target`, `terminal`, `thermometer`, `thumbs-down`, `thumbs-up`, `toggle-left`, `toggle-right`, `tool`, `trash-2`, `trash`, `trello`, `trending-down`, `trending-up`, `triangle`, `truck`, `tv`, `twitch`, `twitter`, `type`, `umbrella`, `underline`, `unlock`, `upload-cloud`, `upload`, `user-check`, `user-minus`, `user-plus`, `user-x`, `user`, `users`, `video-off`, `video`, `voicemail`, `volume-1`, `volume-2`, `volume-x`, `volume`, `watch`, `wifi-off`, `wifi`, `wind`, `x-circle`, `x-octagon`, `x-square`, `x`, `youtube`, `zap-off`, `zap`, `zoom-in`, `zoom-out`.
+         * `icon_keyword`: (字符串, 必须) 描述图标核心含义的**一个小写英文关键词**。你**只能**从以下可用列表中选择图标关键词。** 这个关键词将直接用于查找对应的SVG图标文件:
+             * [`activity`, `airplay`, `alert-circle`, `alert-octagon`, `alert-triangle`, `align-center`, `align-justify`, `align-left`, `align-right`, `anchor`, `aperture`, `archive`, `arrow-down-circle`, `arrow-down-left`, `arrow-down-right`, `arrow-down`, `arrow-left-circle`, `arrow-left`, `arrow-right-circle`, `arrow-right`, `arrow-up-circle`, `arrow-up-left`, `arrow-up-right`, `arrow-up`, `at-sign`, `award`, `bar-chart-2`, `bar-chart`, `battery-charging`, `battery`, `bell-off`, `bell`, `bluetooth`, `bold`, `book-open`, `book`, `bookmark`, `box`, `briefcase`, `calendar`, `camera-off`, `camera`, `cast`, `check-circle`, `check-square`, `check`, `chevron-down`, `chevron-left`, `chevron-right`, `chevron-up`, `chevrons-down`, `chevrons-left`, `chevrons-right`, `chevrons-up`, `chrome`, `circle`, `clipboard`, `clock`, `cloud-drizzle`, `cloud-lightning`, `cloud-off`, `cloud-rain`, `cloud-snow`, `cloud`, `code`, `codepen`, `codesandbox`, `coffee`, `columns`, `command`, `compass`, `copy`, `corner-down-left`, `corner-down-right`, `corner-left-down`, `corner-left-up`, `corner-right-down`, `corner-right-up`, `corner-up-left`, `corner-up-right`, `cpu`, `credit-card`, `crop`, `crosshair`, `database`, `delete`, `disc`, `divide-circle`, `divide-square`, `divide`, `dollar-sign`, `download-cloud`, `download`, `dribbble`, `droplet`, `edit-2`, `edit-3`, `edit`, `external-link`, `eye-off`, `eye`, `facebook`, `fast-forward`, `feather`, `figma`, `file-minus`, `file-plus`, `file-text`, `file`, `film`, `filter`, `flag`, `folder-minus`, `folder-plus`, `folder`, `framer`, `frown`, `gift`, `git-branch`, `git-commit`, `git-merge`, `git-pull-request`, `github`, `gitlab`, `globe`, `grid`, `hard-drive`, `hash`, `headphones`, `heart`, `help-circle`, `hexagon`, `home`, `image`, `inbox`, `info`, `instagram`, `italic`, `key`, `layers`, `layout`, `life-buoy`, `link-2`, `link`, `linkedin`, `list`, `loader`, `lock`, `log-in`, `log-out`, `mail`, `map-pin`, `map`, `maximize-2`, `maximize`, `meh`, `menu`, `message-circle`, `message-square`, `mic-off`, `mic`, `minimize-2`, `minimize`, `minus-circle`, `minus-square`, `minus`, `monitor`, `moon`, `more-horizontal`, `more-vertical`, `mouse-pointer`, `move`, `music`, `navigation-2`, `navigation`, `octagon`, `package`, `paperclip`, `pause-circle`, `pause`, `pen-tool`, `percent`, `phone-call`, `phone-forwarded`, `phone-incoming`, `phone-missed`, `phone-off`, `phone-outgoing`, `phone`, `pie-chart`, `play-circle`, `play`, `plus-circle`, `plus-square`, `plus`, `pocket`, `power`, `printer`, `radio`, `refresh-ccw`, `refresh-cw`, `repeat`, `rewind`, `rotate-ccw`, `rotate-cw`, `rss`, `save`, `scissors`, `search`, `send`, `server`, `settings`, `share-2`, `share`, `shield-off`, `shield`, `shopping-bag`, `shopping-cart`, `shuffle`, `sidebar`, `skip-back`, `skip-forward`, `slack`, `slash`, `sliders`, `smartphone`, `smile`, `speaker`, `square`, `star`, `stop-circle`, `sun`, `sunrise`, `sunset`, `table`, `tablet`, `tag`, `target`, `terminal`, `thermometer`, `thumbs-down`, `thumbs-up`, `toggle-left`, `toggle-right`, `tool`, `trash-2`, `trash`, `trello`, `trending-down`, `trending-up`, `triangle`, `truck`, `tv`, `twitch`, `twitter`, `type`, `umbrella`, `underline`, `unlock`, `upload-cloud`, `upload`, `user-check`, `user-minus`, `user-plus`, `user-x`, `user`, `users`, `video-off`, `video`, `voicemail`, `volume-1`, `volume-2`, `volume-x`, `volume`, `watch`, `wifi-off`, `wifi`, `wind`, `x-circle`, `x-octagon`, `x-square`, `x`, `youtube`, `zap-off`, `zap`, `zoom-in`, `zoom-out`]
          * **重要**: `x`, `y`, `width`, `height` 仍然是必须的。为保持图标比例，建议将 `width` 和 `height` 设置为相同或相近的小数值（例如，都设为0.05）。
     #### **页面级动画序列 (Animation Sequence) [全新功能]**
     在`pages`的每个页面对象中，现在可以包含一个可选的 `animation_sequence` 数组。
@@ -425,7 +425,7 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
 
     final_pages: List[Optional[Dict[str, Any]]] = [None] * len(content_outline['pages'])
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=6) as executor:
         future_to_index = {
             executor.submit(
                 _generate_slide_layout,

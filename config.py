@@ -19,7 +19,7 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "YOUR_PEXELS_API_KEY_HERE")
 MODEL_CONFIG = {
     "designer": "glm-4-plus",
     "writer": "glm-4-plus",
-    "planner": "glm-4-plus"
+    "planner": "glm-4"
 }
 
 
