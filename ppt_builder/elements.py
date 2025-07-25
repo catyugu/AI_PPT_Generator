@@ -52,6 +52,7 @@ def find_icon_path(keyword: str) -> str | None:
     logging.warning(f"图标未找到: 关键词 '{keyword}' -> '{normalized_keyword}.svg'")
     return None
 
+
 def convert_svg_to_png_stream(svg_path: str, color: str) -> BytesIO | None:
     """
     [最终修正] 读取SVG，用主题色替换其颜色，并转换为PNG内存流。
@@ -100,6 +101,7 @@ def _crop_to_circle(image_path: str):
     except Exception as e:
         logging.error(f"处理图片为圆形时失败: {image_path} - {e}", exc_info=True)
         return None
+
 
 # ==================== [新增] 底层XML透明度设置函数 ====================
 def _apply_transparency_to_color_format(color_format, opacity: float):
@@ -206,8 +208,10 @@ def add_shape(slide, element_data: dict, style_manager: PresentationStyle):
             line.fill.background()
 
         logging.info(f"添加 {shape_type_str} 形状完成。")
+        return shape
     except Exception as e:
         logging.error(f"添加形状时发生意外错误: {e}", exc_info=True)
+        return None
 
 
 # --- 其他函数 (add_text_box, add_image, add_chart, add_table) 保持不变 ---
@@ -299,8 +303,10 @@ def add_text_box(slide, element_data: dict, style_manager: PresentationStyle):
 
         log_content = str(content)
         logging.info(f"添加文本框 (字体: {font_name}): '{log_content[:30]}...'")
+        return txBox
     except Exception as e:
         logging.error(f"添加文本框时出错: {e} | 原始元素数据: {element_data}", exc_info=True)
+        return None
 
 
 def add_image(slide, image_path: str, element_data: dict):
@@ -350,11 +356,14 @@ def add_image(slide, image_path: str, element_data: dict):
                     pic.crop_top = crop_ratio
                     pic.crop_bottom = crop_ratio
             logging.info(f"从路径添加并智能裁剪矩形图片: {image_path}")
+            return pic
 
     except FileNotFoundError:
         logging.error(f"图片文件未找到: {image_path}")
     except Exception as e:
         logging.error(f"添加或裁剪图片 {image_path} 时出错: {e}", exc_info=True)
+    finally:
+        return None
 
 
 # 在 elements.py 文件中，请用下面的函数替换旧的 add_chart 函数
@@ -447,8 +456,10 @@ def add_chart(slide, element_data: dict, style_manager: PresentationStyle):
                 chart.value_axis.major_gridlines.format.line.color.rgb = hex_to_rgb("#E0E0E0")
 
         logging.info("成功添加并深度美化了图表。")
+        return chart
     except Exception as e:
         logging.error(f"添加图表时出错: {e}", exc_info=True)
+        return None
 
 
 def add_table(slide, element_data: dict, style_manager: PresentationStyle):
@@ -500,8 +511,10 @@ def add_table(slide, element_data: dict, style_manager: PresentationStyle):
                 p.font.name = style_manager.body_font
 
         logging.info(f"添加了包含 {len(rows_data)} 行的表格。")
+        return shape
     except Exception as e:
         logging.error(f"添加表格时出错: {e}", exc_info=True)
+        return None
 
 
 def add_icon(slide, element_data, presentation_size, style_manager):
@@ -554,11 +567,11 @@ def add_icon(slide, element_data, presentation_size, style_manager):
 
     # 注意：add_picture可以直接接收整数或Emu()对象
     try:
-        # 使用 width_emu 来设置宽度，高度会自动按比例缩放
-        slide.shapes.add_picture(png_image_stream, left_emu, top_emu, width=width_emu)
         logging.info(f"成功添加SVG图标: '{keyword}' (颜色: #{icon_color})")
+        return slide.shapes.add_picture(png_image_stream, left_emu, top_emu, width=width_emu)
     except Exception as e:
         logging.error(f"从流添加图片 '{keyword}' 时发生异常: {e}")
+        return None
     finally:
         if png_image_stream:
             png_image_stream.close()

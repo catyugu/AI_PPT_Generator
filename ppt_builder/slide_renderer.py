@@ -3,7 +3,7 @@ import os
 
 from pptx import Presentation
 # 确保 elements 模块被正确导入
-from ppt_builder import elements
+from ppt_builder import elements, animation
 from ppt_builder.styles import PresentationStyle, px_to_emu
 
 # --- 修改1：为icon元素添加图层顺序 ---
@@ -71,7 +71,7 @@ class SlideRenderer:
 
         # ===================== 核心修改：元素排序 =====================
         elements_to_render = slide_data.get('elements', [])
-
+        shapes_map = {}
         elements_to_render.sort(
             key=lambda e: ELEMENT_LAYER_ORDER.get(e.get('type'), ELEMENT_LAYER_ORDER['default'])
         )
@@ -81,35 +81,35 @@ class SlideRenderer:
         # 遍历排序后的列表进行渲染
         for element in elements_to_render:
             element_type = element.get('type')
+            element_id = element.get('id')
+            new_shape = None
             try:
                 if element_type in ['text_box', 'text']:
-                    elements.add_text_box(slide, element, self.style_manager)
+                    new_shape = elements.add_text_box(slide, element, self.style_manager)
 
                 elif element_type == 'image':
                     if image_keyword := element.get('image_keyword'):
                         opacity = element.get('style', {}).get('opacity', 1.0)
                         image_path = image_service.generate_image(image_keyword, opacity)
                         if image_path:
-                            elements.add_image(slide, image_path, element)
+                            new_shape = elements.add_image(slide, image_path, element)
                         else:
                             logging.warning(f"无法为关键词生成图片: '{image_keyword}'。已跳过此元素。")
                     else:
                         logging.warning("图片元素缺少 'image_keyword'，已跳过。")
 
                 elif element_type == 'shape':
-                    elements.add_shape(slide, element, self.style_manager)
+                    new_shape = elements.add_shape(slide, element, self.style_manager)
 
                 elif element_type == 'chart':
-                    elements.add_chart(slide, element, self.style_manager)
+                    new_shape = elements.add_chart(slide, element, self.style_manager)
 
                 elif element_type == 'table':
-                    elements.add_table(slide, element, self.style_manager)
+                    new_shape = elements.add_table(slide, element, self.style_manager)
 
                 # --- 修改2：添加对icon类型的支持 ---
                 elif element_type == 'icon':
-                    # 调用elements模块中对应的add_icon函数
-                    # 我们需要传入 style_manager，以便函数可以访问主题颜色
-                    elements.add_icon(
+                    new_shape = elements.add_icon(
                         slide,
                         element,
                         (self.prs.slide_width, self.prs.slide_height),
@@ -119,5 +119,27 @@ class SlideRenderer:
                 else:
                     logging.warning(f"不支持的元素类型: '{element_type}'。")
 
+                if element_id and new_shape:
+                    shapes_map[element_id] = new_shape
+
             except Exception as e:
                 logging.error(f"渲染类型为 '{element_type}' 的元素失败: {e}", exc_info=True)
+                # --- 第二步：按序列添加动画 ---
+        if 'animation_sequence' in slide_data:
+            for anim_step in slide_data['animation_sequence']:
+                element_id_to_animate = anim_step.get('element_id')
+                anim_data = anim_step.get('animation')
+
+                if not element_id_to_animate or not anim_data:
+                    continue
+
+                # 从映射表中查找对应的shape对象
+                shape_to_animate = shapes_map.get(element_id_to_animate)
+
+                if shape_to_animate:
+                    anim_type = anim_data.get('type')
+                    if anim_type:
+                        # 调用我们强大的动画模块
+                        animation.add_animation(shape_to_animate, anim_type, **anim_data)
+                else:
+                    logging.warning(f"在动画序列中找不到ID为'{element_id_to_animate}'的元素。")

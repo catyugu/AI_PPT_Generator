@@ -95,7 +95,6 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
      * **`elements`**: (数组) 页面上所有视觉元素的集合。
 
      #### **元素 (Element) 定义**
-
      **所有元素都必须包含** `type`, `x`, `y`, `width`, `height` 这五个基本属性。
      **重要：所有坐标和尺寸都必须基于一个 {canvas_width}x{canvas_height} 像素的画布进行设计。**
 
@@ -150,7 +149,20 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
          * `icon_keyword`: (字符串, 必须) 描述图标核心含义的**一个小写英文关键词**。这个关键词将直接用于查找来自`feather`图标库的对应的SVG图标文件（例如, `target.svg`）。请确保关键词准确且符合图标库的命名。
          * **重要**: `x`, `y`, `width`, `height` 仍然是必须的。为保持图标比例，建议将 `width` 和 `height` 设置为相同或相近的小数值（例如，都设为0.05）。
 
-     ---
+    #### **页面级动画序列 (Animation Sequence) [全新功能]**
+    在`pages`的每个页面对象中，现在可以包含一个可选的 `animation_sequence` 数组。
+
+    * `animation_sequence`: (数组, 可选) **定义了本页所有动画的触发顺序**。数组中的每个对象代表一个“单击步骤”。
+    * **序列对象的结构**:
+        * `element_id`: (字符串, 必须) 引用本页中某个元素的 `id`。
+        * `animation`: (对象, 必须) 定义要对该元素执行的动画。
+
+    #### **动画 (Animation) 对象定义**
+    * `type`: "fadeIn", "fadeOut", "flyIn", "flyOut"
+    * `duration_ms`: (数字, 可选)
+    * `direction`: (字符串, 可选)
+
+    ---
 
      ### **第三部分：多样性与一致性核心准则 (Core Principles for Variety & Consistency)**
 
@@ -174,6 +186,11 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
      8.  **你的PPT页数应该严格与用户要求的页数一致**
      9.  **设计质量规则**: 每一页都必须承载明确的信息，严禁创建无实质内容的“过渡页”，也不要在一个页面中只放置一句话格言。
      10. **图标使用指南 (Icon Usage Guide)**: 你现在可以使用 `icon` 元素。请策略性地使用它来强调要点或增强视觉传达。`icon_keyword` 必须是小写英文单词。请勿过度使用，每页1-3个为宜。
+     11. **动画导演指南 (Animation Director's Guide)**:
+         * 你现在是一个“导演”。你需要通过 `animation_sequence` 数组来编排整个幻灯片的动画故事线。
+         * **思考顺序**: 先布局所有静态元素，并为它们分配好ID。然后，在 `animation_sequence` 中，像写剧本一样，一步一步（一次单击）地定义哪个元素以何种方式出现或消失。
+         * **范例**: 一个经典的序列是：主标题 `fadeIn` -> (下一次单击) -> 主图片 `flyIn` -> (下一次单击) -> 要点一 `flyIn` -> (下一次单击) -> 要点二 `flyIn`。
+         * **退出动画**: 你也可以编排复杂的“换场”效果，例如：旧图表 `flyOut` -> (下一次单击) -> 新图表 `fadeIn`。
 
      ---
 
@@ -275,6 +292,60 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
             {{ "type": "text_box", "x": 500, "y": 280, "width": 280, "height": 150, "content": "**高度可定制**\\n从颜色到字体，从布局到内容，一切尽在掌握。", "style": {{ "font": {{ "type": "body", "size": 18, "color": "#E0E0E0" }}, "alignment": "CENTER" }} }},
             {{ "type": "icon", "x": 955, "y": 200, "width": 70, "height": 70, "icon_keyword": "gift" }},
             {{ "type": "text_box", "x": 850, "y": 280, "width": 280, "height": 150, "content": "**完全免费开源**\\n我们相信知识共享的力量，欢迎共建。", "style": {{ "font": {{ "type": "body", "size": 18, "color": "#E0E0E0" }}, "alignment": "CENTER" }} }}
+          ]
+        }}
+      ]
+    }}
+    
+    #### **样例四：演示动画系统**
+     {{
+      "design_concept": "都市节奏",
+      "pages": [
+        {{
+          "layout_type": "content_reveal",
+          "elements": [
+            {{
+              "id": "page_title",
+              "type": "text_box", "x": 100, "y": 80, "width": 1080, "height": 80,
+              "content": "市场分析三大维度",
+              "style": {{ "font": {{ "type": "heading", "size": 48, "bold": true }}, "alignment": "CENTER" }}
+            }},
+            {{
+              "id": "dimension_1_icon",
+              "type": "icon", "x": 255, "y": 200, "width": 70, "height": 70, "icon_keyword": "users"
+            }},
+            {{
+              "id": "dimension_1_text",
+              "type": "text_box", "x": 150, "y": 280, "width": 280, "height": 150,
+              "content": "**用户画像**\\n深入了解你的目标客户。",
+              "style": {{ "font": {{ "type": "body", "size": 18 }}, "alignment": "CENTER" }}
+            }},
+            {{
+              "id": "dimension_2_icon",
+              "type": "icon", "x": 605, "y": 200, "width": 70, "height": 70, "icon_keyword": "trending-up"
+            }},
+            {{
+              "id": "dimension_2_text",
+              "type": "text_box", "x": 500, "y": 280, "width": 280, "height": 150,
+              "content": "**竞品动态**\\n知己知彼，百战不殆。",
+              "style": {{ "font": {{ "type": "body", "size": 18 }}, "alignment": "CENTER" }}
+            }},
+            {{
+              "id": "final_image",
+              "type": "image", "x": 0, "y": 0, "width": 1280, "height": 720,
+              "image_keyword": "abstract city skyline at night",
+              "style": {{ "opacity": 0 }} // 初始时可以设为透明
+            }}
+          ],
+          "animation_sequence": [
+            {{ "element_id": "page_title", "animation": {{ "type": "fadeIn" }} }},
+            {{ "element_id": "dimension_1_icon", "animation": {{ "type": "flyIn", "direction": "fromTop" }} }},
+            {{ "element_id": "dimension_1_text", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }},
+            {{ "element_id": "dimension_2_icon", "animation": {{ "type": "flyIn", "direction": "fromTop" }} }},
+            {{ "element_id": "dimension_2_text", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }},
+            {{ "element_id": "dimension_1_text", "animation": {{ "type": "fadeOut" }} }},
+            {{ "element_id": "dimension_2_text", "animation": {{ "type": "fadeOut" }} }},
+            {{ "element_id": "final_image", "animation": {{ "type": "fadeIn", "duration_ms": 1500 }} }}
           ]
         }}
       ]
