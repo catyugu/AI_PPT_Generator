@@ -204,6 +204,8 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
         * `rows`: (二维字符串数组) 表格数据。
         * `style`: (对象, 可选) 定义表头/行颜色等。
 
+    6.  **`icon`**
+    
     ---
 
     ### **第三部分：多样性与一致性核心准则 (Core Principles for Variety & Consistency)**
@@ -227,6 +229,7 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
     7.  **所有的文本样式（如加粗）都必须通过`style`对象中的对应属性（如 `"bold": true`）来定义。**
     8.  **你的PPT页数应该严格与用户要求的页数一致**
     9.  **设计质量规则**: 每一页都必须承载明确的信息，严禁创建无实质内容的“过渡页”，也不要在一个页面中只放置一句话格言。
+        * **严格避免：**连续超过一页使用‘仅有居中大标题’的布局；**避免**在内容页仅放置一两句格言而无实质信息。
     
     ---
 
