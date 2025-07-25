@@ -96,11 +96,9 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
 
      #### **元素 (Element) 定义**
      **所有元素都必须包含** `type`, `x`, `y`, `width`, `height` 这五个基本属性。
-     
      此外，所有元素**可以包含** `z_index` (数字, 可选) 属性，用于控制元素的堆叠顺序（图层）。`z_index`值越大，元素越靠上。如果未指定，系统将根据元素类型使用默认层级。
-     
+     **重要：所有计划进行动画的元素（例如图片、文本框、形状、图表、表格、图标）都必须包含一个唯一的 `id` (字符串) 属性，例如 `\"id\": \"my_element_id\"`。** 这个ID将用于在 `animation_sequence` 中引用该元素。
      **重要：所有坐标和尺寸都必须基于一个 {canvas_width}x{canvas_height} 像素的画布进行设计。**
-
      1.  **`text_box`**
          * `type`: "text_box"
          * `content`: (字符串或字符串数组) **[新功能]** 如果是普通文本，则为字符串，支持用 `\\n` 换行。如果要创建项目符号列表，则**必须**使用字符串数组，数组中每个字符串代表一个列表项。
