@@ -1,6 +1,8 @@
 import logging
+import os
 import re
 import io
+from io import BytesIO
 
 from PIL import Image, ImageOps, ImageDraw
 from pptx.util import Pt
@@ -11,7 +13,11 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 # [新增] 导入底层XML操作所需的工具
 from pptx.oxml.ns import qn
+
+from config import ICON_DIR
 from ppt_builder.styles import px_to_emu, hex_to_rgb, PresentationStyle
+import cairosvg
+from pptx.util import Inches
 
 # 形状类型映射
 SHAPE_TYPE_MAP = {
@@ -29,6 +35,31 @@ ALIGNMENT_MAP = {
     'RIGHT': PP_ALIGN.RIGHT,
     'JUSTIFY': PP_ALIGN.JUSTIFY,
 }
+
+
+def find_icon_path(keyword: str) -> str | None:
+    """根据关键词在图标库中查找对应的SVG文件路径。"""
+    # 简单的中英文关键词映射 (可选，但建议保留以增加AI的灵活性)
+    keyword_map = {
+        "创新": "cpu",
+        "想法": "cpu",
+        "增长": "trending-up",
+        "目标": "target",
+        "数据": "database",
+        "警告": "alert-triangle",
+        "设置": "settings",
+        "链接": "link",
+        "主页": "home"
+    }
+
+    normalized_keyword = keyword_map.get(keyword.lower(), keyword.lower())
+    icon_path = os.path.join(ICON_DIR, f"{normalized_keyword}.svg")
+
+    if os.path.exists(icon_path):
+        return icon_path
+
+    print(f"警告: 无法为关键词 '{keyword}' (解析为 '{normalized_keyword}.svg') 找到图标。将跳过。")
+    return None
 
 
 def _crop_to_circle(image_path: str):
@@ -50,6 +81,28 @@ def _crop_to_circle(image_path: str):
             return buffer
     except Exception as e:
         logging.error(f"处理图片为圆形时失败: {image_path} - {e}", exc_info=True)
+        return None
+
+
+def convert_svg_to_png_stream(svg_path: str, color: str) -> BytesIO | None:
+    """读取SVG，用主题色替换其颜色，并转换为PNG内存流。"""
+    try:
+        with open(svg_path, 'r', encoding='utf-8') as f:
+            svg_content = f.read()
+
+        # 将 'currentColor' 替换为指定的主题色
+        modified_svg_content = svg_content.replace('stroke="currentColor"', f'stroke="#{color}"')
+
+        png_stream = io.BytesIO()
+        cairosvg.svg2png(
+            bytestring=modified_svg_content.encode('utf-8'),
+            write_to=png_stream,
+            output_width=256  # 输出一个清晰的分辨率
+        )
+        png_stream.seek(0)
+        return png_stream
+    except Exception as e:
+        print(f"错误: 转换SVG '{os.path.basename(svg_path)}' 时发生异常: {e}")
         return None
 
 
@@ -454,3 +507,42 @@ def add_table(slide, element_data: dict, style_manager: PresentationStyle):
         logging.info(f"添加了包含 {len(rows_data)} 行的表格。")
     except Exception as e:
         logging.error(f"添加表格时出错: {e}", exc_info=True)
+
+
+def add_icon(slide, element_data, presentation_size, theme_colors):
+    """
+    在幻灯片上添加一个经过主题色渲染的图标。
+    这个函数是外部调用的主入口。
+    """
+    keyword = element_data.get("icon_keyword")
+    if not keyword:
+        print("警告: 图标元素缺少 'icon_keyword'。将跳过。")
+        return
+
+    svg_path = find_icon_path(keyword)
+    if not svg_path:
+        return
+
+    # 从PPT设计方案中获取一个强调色来渲染图标，确保风格统一
+    # 您可以根据需要制定更复杂的逻辑，例如使用 accent2, accent3 等
+    icon_color = theme_colors.get("accent1", "000000")  # 默认使用强调色1，如果没有则用黑色
+
+    png_image_stream = convert_svg_to_png_stream(svg_path, icon_color)
+    if not png_image_stream:
+        return
+
+    pres_width_emu, pres_height_emu = presentation_size
+    pres_width_inches = pres_width_emu / 914400
+    pres_height_inches = pres_height_emu / 914400
+
+    left = Inches(element_data["x"] * pres_width_inches)
+    top = Inches(element_data["y"] * pres_height_inches)
+    width = Inches(element_data["width"] * pres_width_inches)
+
+    try:
+        slide.shapes.add_picture(png_image_stream, left, top, width=width)
+        print(f"成功添加SVG图标: '{keyword}' (颜色: #{icon_color})")
+    except Exception as e:
+        print(f"错误: 从流添加图片 '{keyword}' 时发生异常: {e}")
+    finally:
+        png_image_stream.close()
