@@ -401,9 +401,9 @@ def _generate_slide_layout(page_content: dict, design_system: dict, page_index: 
 # --- [最终版] 主函数：编排“拥有案例手册的专家流水线” ---
 def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str = "16:9") -> dict | None:
     """
-    通过分阶段、并发执行的AI专家流水线，高效生成完整的、高质量的演示文稿计划。
+    通过分阶段、并发执行、带自我修正的AI专家流水线，高效生成完整的、高质量的演示文稿计划。
     """
-    logging.info("--- 开始AI专家流水线生成任务 (带并发引擎) ---")
+    logging.info("--- 开始AI专家流水线生成任务 (带并发引擎和纠错层) ---")
 
     # 阶段一和阶段二保持不变...
     logging.info("[阶段 1/3] 正在由“视觉总监”生成核心设计系统...")
@@ -420,10 +420,9 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
         return None
     logging.info("内容大纲已生成。")
 
-    # [核心修正] 阶段三: 并发处理
+    # 阶段三: 并发处理
     logging.info("[阶段 3/3] “排版导演团队”开始并行设计布局与动画...")
 
-    # 2. 明确标注 final_pages 的类型
     final_pages: List[Optional[Dict[str, Any]]] = [None] * len(content_outline['pages'])
 
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -443,26 +442,38 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
             index = future_to_index[future]
             try:
                 slide_layout = future.result()
-                if slide_layout:
-                    logging.info(f"  - 第 {index + 1} 页设计完成。")
-                    page_data = {
-                        "layout_type": slide_layout.get("layout_type", "default"),
-                        "elements": slide_layout.get("elements", []),
-                        "animation_sequence": slide_layout.get("animation_sequence", [])
+                if slide_layout and "elements" in slide_layout:
+
+                    # --- [核心修正] AI纠错层：清理无效动画 ---
+                    # 1. 获取本页所有真实存在的元素ID
+                    existing_element_ids = {
+                        element['id'] for element in slide_layout['elements'] if 'id' in element
                     }
-                    final_pages[index] = page_data  # 类型检查器现在知道这是合法的
+
+                    # 2. 过滤动画序列，只保留引用了真实ID的动画
+                    if "animation_sequence" in slide_layout:
+                        valid_animations = [
+                            anim for anim in slide_layout['animation_sequence']
+                            if anim.get('element_id') in existing_element_ids
+                        ]
+                        # 如果有变化，则记录日志
+                        if len(valid_animations) < len(slide_layout['animation_sequence']):
+                            logging.warning(f"  - 第 {index + 1} 页：已自动清理无效的动画引用。")
+                        slide_layout['animation_sequence'] = valid_animations
+                    # --- AI纠错层结束 ---
+
+                    logging.info(f"  - 第 {index + 1} 页设计完成。")
+                    final_pages[index] = slide_layout
                 else:
-                    raise ValueError("Layout generation returned None")
+                    raise ValueError("布局生成失败或未包含 'elements'。")
             except Exception as exc:
                 logging.error(f"  - 第 {index + 1} 页设计中发生错误: {exc}")
                 final_pages[index] = {
                     "layout_type": "fallback_error",
-                    "elements": [
-                        {"type": "text_box", "content": f"页面 {index + 1} 生成失败", "x": 100, "y": 100, "width": 1080,
-                         "height": 100, "style": {"font": {"type": "heading", "size": 36}}}]
+                    "elements": [{"type": "text_box", "content": f"页面 {index+1} 生成失败", "x": 100, "y": 100, "width": 1080, "height": 100, "style": {"font": {"type": "heading", "size": 36}}}]
                 }
 
-    # ... 后续组装逻辑保持不变 ...
+    # 组装最终计划
     if all(p is None for p in final_pages):
         logging.error("所有页面布局均生成失败，任务中止。")
         return None
@@ -470,14 +481,13 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
     final_plan = {
         **design_system,
         "master_slide": {
-            "background": {"color": design_system.get("color_palette", {}).get("background", "#FFFFFF")}
+            "background": { "color": design_system.get("color_palette", {}).get("background", "#FFFFFF") }
         },
-        "pages": [p for p in final_pages if p is not None]  # 过滤掉可能的None值
+        "pages": [p for p in final_pages if p] # 过滤掉None值
     }
 
     logging.info("--- AI专家流水线任务全部完成 ---")
     return final_plan
-
 
 # --- 无缝切换接口 ---
 generate_presentation_plan = generate_presentation_pipeline
