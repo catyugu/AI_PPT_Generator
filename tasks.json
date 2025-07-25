@@ -1,52 +1,42 @@
 [
     {
-        "theme": "新产品上市发布会方案",
-        "pages": 15,
-        "aspect_ratio": "16:9"
+        "theme": "“青春飞扬”社团联合招新宣讲",
+        "pages": 16
     },
     {
-        "theme": "企业年度财务报告与分析",
-        "pages": 15,
-        "aspect_ratio": "16:9"
+        "theme": "中国近代史课程小组汇报：五四运动的背景与影响",
+        "pages": 18
     },
     {
-        "theme": "项目启动会",
-        "pages": 17,
-        "aspect_ratio": "16:9"
+        "theme": "“凝心聚力”班级秋季团建活动策划案",
+        "pages": 15
     },
     {
-        "theme": "初创公司融资路演",
-        "pages": 18,
-        "aspect_ratio": "16:9"
+        "theme": "本科毕业论文答辩：论社交媒体对大学生身份认同的影响",
+        "pages": 20
     },
     {
-        "theme": "网络安全意识普及培训",
-        "pages": 16,
-        "aspect_ratio": "16:9"
-    },
-        {
-        "theme": "新产品上市发布会方案",
-        "pages": 17,
-        "aspect_ratio": "4:3"
+        "theme": "我的求职简历与个人陈述",
+        "pages": 15
     },
     {
-        "theme": "企业年度财务报告与分析",
-        "pages": 16,
-        "aspect_ratio": "4:3"
+        "theme": "“走进乡村”暑期社会实践成果报告",
+        "pages": 17
     },
     {
-        "theme": "项目启动会",
-        "pages": 18,
-        "aspect_ratio": "4:3"
+        "theme": "第十届“校园之声”歌手大赛策划方案",
+        "pages": 18
     },
     {
-        "theme": "初创公司融资路演",
-        "pages": 15,
-        "aspect_ratio": "4:3"
+        "theme": "写给新生的大学生活指南",
+        "pages": 19
     },
     {
-        "theme": "网络安全意识普及培训",
-        "pages": 15,
-        "aspect_ratio": "4:3"
+        "theme": "“一战成硕”考研公共课复习经验分享",
+        "pages": 16
+    },
+    {
+        "theme": "“书香校园”世界读书日系列活动倡议书",
+        "pages": 15
     }
 ]
