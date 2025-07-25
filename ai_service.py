@@ -2,12 +2,13 @@
 import json
 import logging
 import re
+import time
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from typing import List, Optional, Dict, Any
 
 from openai import OpenAI
 
-from config import ONEAPI_KEY, ONEAPI_BASE_URL, MODEL_CONFIG, SYSTEM_PROMPT
+from config import ONEAPI_KEY, ONEAPI_BASE_URL, MODEL_CONFIG, SYSTEM_PROMPT, MAX_LAYOUT_RETRIES
 
 # ... (日志、客户端初始化、_extract_json_from_response, _call_ai 保持不变) ...
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -53,7 +54,6 @@ def _call_ai(prompt: str, model_name: str) -> dict | None:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=16000,
             temperature=0.6
         )
         response_content = response.choices[0].message.content
@@ -406,14 +406,48 @@ def _generate_slide_layout(page_content: dict, design_system: dict, all_pages_ou
     return _call_ai(prompt, model)
 
 
+def _generate_slide_layout_with_retry(page_content: dict, design_system: dict, all_pages_outline: list,
+                                      page_index: int, total_pages: int, aspect_ratio: str) -> dict | None:
+    """
+    调用布局生成函数，并集成重试逻辑。
+    """
+    for attempt in range(MAX_LAYOUT_RETRIES):
+        logging.info(f"  - 正在生成第 {page_index + 1} 页布局 (尝试 {attempt + 1}/{MAX_LAYOUT_RETRIES})...")
+        try:
+            slide_layout = _generate_slide_layout(
+                page_content,
+                design_system,
+                all_pages_outline,
+                page_index,
+                total_pages,
+                aspect_ratio
+            )
+            # 成功条件：返回非空且包含 'elements' 键
+            if slide_layout and "elements" in slide_layout:
+                logging.info(f"  - 第 {page_index + 1} 页布局生成成功。")
+                return slide_layout
+
+            logging.warning(f"  - 第 {page_index + 1} 页布局生成失败，返回内容不符合预期。")
+
+        except Exception as e:
+            logging.error(f"  - 第 {page_index + 1} 页布局生成时发生异常: {e}", exc_info=True)
+
+        # 如果不是最后一次尝试，则等待一段时间后重试
+        if attempt < MAX_LAYOUT_RETRIES - 1:
+            wait_time = (attempt + 1) * 2  # 逐渐增加等待时间 (2s, 4s)
+            logging.info(f"  - 将在 {wait_time} 秒后重试...")
+            time.sleep(wait_time)
+
+    logging.error(f"  - 经过 {MAX_LAYOUT_RETRIES} 次尝试后，仍无法为第 {page_index + 1} 页生成有效布局。")
+    return None  # 所有尝试均告失败
 # --- [最终版] 主函数：编排“拥有案例手册的专家流水线” ---
 def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str = "16:9") -> dict | None:
     """
-    通过分阶段、并发执行、带自我修正的AI专家流水线，高效生成完整的、高质量的演示文稿计划。
+    通过分阶段、并发执行、带重试与容错的AI专家流水线，高效生成完整的、高质量的演示文稿计划。
     """
-    logging.info("--- 开始AI专家流水线生成任务 (带并发引擎和纠错层) ---")
+    logging.info("--- 开始AI专家流水线生成任务 (带并发引擎、纠错与重试) ---")
 
-    # 阶段一和阶段二保持不变...
+    # 阶段一：生成设计系统
     logging.info("[阶段 1/3] 正在由“视觉总监”生成核心设计系统...")
     design_system = _generate_design_system(theme)
     if not design_system:
@@ -421,6 +455,7 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
         return None
     logging.info("核心设计系统已生成。")
 
+    # 阶段二：生成内容大纲
     logging.info("[阶段 2/3] 正在由“信息架构师”生成内容大纲...")
     content_outline = _generate_content_outline(theme, num_pages)
     if not content_outline or 'pages' not in content_outline:
@@ -428,15 +463,16 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
         return None
     logging.info("内容大纲已生成。")
 
-    # 阶段三: 并发处理
+    # 阶段三：并发处理页面布局（已集成重试与容错）
     logging.info("[阶段 3/3] “排版导演团队”开始并行设计布局与动画...")
-
     final_pages: List[Optional[Dict[str, Any]]] = [None] * len(content_outline['pages'])
+    canvas_width, canvas_height = (1024, 768) if aspect_ratio == "4:3" else (1280, 720)
 
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_index = {
             executor.submit(
-                _generate_slide_layout,
+                # [修改] 调用新的带重试的函数
+                _generate_slide_layout_with_retry,
                 page_content,
                 design_system,
                 content_outline['pages'],
@@ -451,35 +487,47 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
             index = future_to_index[future]
             try:
                 slide_layout = future.result()
-                if slide_layout and "elements" in slide_layout:
 
-                    # --- [核心修正] AI纠错层：清理无效动画 ---
-                    # 1. 获取本页所有真实存在的元素ID
-                    existing_element_ids = {
-                        element['id'] for element in slide_layout['elements'] if 'id' in element
-                    }
-
-                    # 2. 过滤动画序列，只保留引用了真实ID的动画
+                # [修改] 增加容错逻辑
+                if slide_layout:
+                    # --- AI纠错层：清理无效动画 ---
+                    existing_element_ids = {element['id'] for element in slide_layout.get('elements', []) if
+                                            'id' in element}
                     if "animation_sequence" in slide_layout:
                         valid_animations = [
-                            anim for anim in slide_layout['animation_sequence']
+                            anim for anim in slide_layout.get('animation_sequence', [])
                             if anim.get('element_id') in existing_element_ids
                         ]
-                        # 如果有变化，则记录日志
-                        if len(valid_animations) < len(slide_layout['animation_sequence']):
+                        if len(valid_animations) < len(slide_layout.get('animation_sequence', [])):
                             logging.warning(f"  - 第 {index + 1} 页：已自动清理无效的动画引用。")
                         slide_layout['animation_sequence'] = valid_animations
-                    # --- AI纠错层结束 ---
-
-                    logging.info(f"  - 第 {index + 1} 页设计完成。")
+                    # --- 纠错层结束 ---
                     final_pages[index] = slide_layout
                 else:
-                    raise ValueError("布局生成失败或未包含 'elements'。")
+                    # [容错] 如果重试最终失败，生成一个明确的错误提示页
+                    logging.error(f"  - 第 {index + 1} 页布局生成永久失败，将使用错误提示页。")
+                    final_pages[index] = {
+                        "layout_type": "fallback_error",
+                        "elements": [{
+                            "id": "error_text",
+                            "type": "text_box",
+                            "content": f"页面 {index + 1}\n生成失败",
+                            "x": int(canvas_width * 0.1), "y": int(canvas_height * 0.4),
+                            "width": int(canvas_width * 0.8), "height": int(canvas_height * 0.2),
+                            "style": {
+                                "font": {"type": "heading", "size": 48, "color": "#E53935", "bold": True},
+                                "alignment": "CENTER"
+                            }
+                        }]
+                    }
+
             except Exception as exc:
-                logging.error(f"  - 第 {index + 1} 页设计中发生错误: {exc}")
+                logging.error(f"  - 处理第 {index + 1} 页的设计结果时发生严重错误: {exc}", exc_info=True)
                 final_pages[index] = {
                     "layout_type": "fallback_error",
-                    "elements": [{"type": "text_box", "content": f"页面 {index+1} 生成失败", "x": 100, "y": 100, "width": 1080, "height": 100, "style": {"font": {"type": "heading", "size": 36}}}]
+                    "elements": [
+                        {"type": "text_box", "content": f"页面 {index + 1} 处理异常", "x": 100, "y": 100, "width": 1080,
+                         "height": 100, "style": {"font": {"type": "heading", "size": 36, "color": "#E53935"}}}]
                 }
 
     # 组装最终计划
@@ -490,13 +538,14 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
     final_plan = {
         **design_system,
         "master_slide": {
-            "background": { "color": design_system.get("color_palette", {}).get("background", "#FFFFFF") }
+            "background": {"color": design_system.get("color_palette", {}).get("background", "#FFFFFF")}
         },
-        "pages": [p for p in final_pages if p] # 过滤掉None值
+        "pages": [p for p in final_pages if p]  # 过滤掉可能的None值
     }
 
     logging.info("--- AI专家流水线任务全部完成 ---")
     return final_plan
+
 
 # --- 无缝切换接口 ---
 generate_presentation_plan = generate_presentation_pipeline

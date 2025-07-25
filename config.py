@@ -19,8 +19,9 @@ PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "YOUR_PEXELS_API_KEY_HERE")
 MODEL_CONFIG = {
     "designer": "gemini-2.5-flash",
     "writer": "gemini-2.5-flash",
-    "planner": "glm-4"
+    "planner": "glm-4-long"
 }
+MAX_LAYOUT_RETRIES = 3
 
 
 # --- 输出配置 ---
