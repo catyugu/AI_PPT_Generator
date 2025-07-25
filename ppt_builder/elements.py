@@ -5,7 +5,7 @@ import io
 from io import BytesIO
 
 from PIL import Image, ImageOps, ImageDraw
-from pptx.util import Pt
+from pptx.util import Pt, Emu
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.chart.data import ChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION, XL_MARKER_STYLE
@@ -39,27 +39,45 @@ ALIGNMENT_MAP = {
 
 def find_icon_path(keyword: str) -> str | None:
     """根据关键词在图标库中查找对应的SVG文件路径。"""
-    # 简单的中英文关键词映射 (可选，但建议保留以增加AI的灵活性)
     keyword_map = {
-        "创新": "cpu",
-        "想法": "cpu",
-        "增长": "trending-up",
-        "目标": "target",
-        "数据": "database",
-        "警告": "alert-triangle",
-        "设置": "settings",
-        "链接": "link",
-        "主页": "home"
+        "创新": "cpu", "想法": "cpu", "增长": "trending-up", "目标": "target",
+        "数据": "database", "警告": "alert-triangle", "设置": "settings",
+        "链接": "link", "主页": "home", "日历": "calendar", "旗帜": "flag",
+        "全球": "globe", "礼物": "gift"
     }
-
     normalized_keyword = keyword_map.get(keyword.lower(), keyword.lower())
     icon_path = os.path.join(ICON_DIR, f"{normalized_keyword}.svg")
-
     if os.path.exists(icon_path):
         return icon_path
-
-    print(f"警告: 无法为关键词 '{keyword}' (解析为 '{normalized_keyword}.svg') 找到图标。将跳过。")
+    logging.warning(f"图标未找到: 关键词 '{keyword}' -> '{normalized_keyword}.svg'")
     return None
+
+def convert_svg_to_png_stream(svg_path: str, color: str) -> BytesIO | None:
+    """
+    [最终修正] 读取SVG，用主题色替换其颜色，并转换为PNG内存流。
+    """
+    try:
+        with open(svg_path, 'r', encoding='utf-8') as f:
+            svg_content = f.read()
+
+        # --- 核心修正：为属性值添加双引号 ---
+        # 将替换字符串从 f'stroke=#{color}' 改为 f'stroke="#{color}"'
+        # 确保生成的SVG语法正确 (例如: stroke="#F48FB1")
+        modified_svg_content = svg_content.replace('stroke="currentColor"', f'stroke="#{color}"')
+
+        png_stream = io.BytesIO()
+        cairosvg.svg2png(
+            bytestring=modified_svg_content.encode('utf-8'),
+            write_to=png_stream,
+            output_width=256
+        )
+        png_stream.seek(0)
+        return png_stream
+    except Exception as e:
+        # 增加日志，打印出失败的SVG内容以帮助调试
+        logging.error(f"转换SVG '{os.path.basename(svg_path)}' 时发生异常: {e}")
+        # logging.debug(f"失败的SVG内容: {modified_svg_content}") # 如果需要，可以取消此行注释以进行深度调试
+        return None
 
 
 def _crop_to_circle(image_path: str):
@@ -82,29 +100,6 @@ def _crop_to_circle(image_path: str):
     except Exception as e:
         logging.error(f"处理图片为圆形时失败: {image_path} - {e}", exc_info=True)
         return None
-
-
-def convert_svg_to_png_stream(svg_path: str, color: str) -> BytesIO | None:
-    """读取SVG，用主题色替换其颜色，并转换为PNG内存流。"""
-    try:
-        with open(svg_path, 'r', encoding='utf-8') as f:
-            svg_content = f.read()
-
-        # 将 'currentColor' 替换为指定的主题色
-        modified_svg_content = svg_content.replace('stroke="currentColor"', f'stroke="#{color}"')
-
-        png_stream = io.BytesIO()
-        cairosvg.svg2png(
-            bytestring=modified_svg_content.encode('utf-8'),
-            write_to=png_stream,
-            output_width=256  # 输出一个清晰的分辨率
-        )
-        png_stream.seek(0)
-        return png_stream
-    except Exception as e:
-        print(f"错误: 转换SVG '{os.path.basename(svg_path)}' 时发生异常: {e}")
-        return None
-
 
 # ==================== [新增] 底层XML透明度设置函数 ====================
 def _apply_transparency_to_color_format(color_format, opacity: float):
@@ -509,40 +504,61 @@ def add_table(slide, element_data: dict, style_manager: PresentationStyle):
         logging.error(f"添加表格时出错: {e}", exc_info=True)
 
 
-def add_icon(slide, element_data, presentation_size, theme_colors):
+def add_icon(slide, element_data, presentation_size, style_manager):
     """
-    在幻灯片上添加一个经过主题色渲染的图标。
-    这个函数是外部调用的主入口。
+    [最终修正] 在幻灯片上添加一个尺寸正确、经过主题色渲染的图标。
     """
     keyword = element_data.get("icon_keyword")
     if not keyword:
-        print("警告: 图标元素缺少 'icon_keyword'。将跳过。")
+        logging.warning("图标元素缺少 'icon_keyword'。将跳过。")
         return
 
     svg_path = find_icon_path(keyword)
     if not svg_path:
         return
 
-    # 从PPT设计方案中获取一个强调色来渲染图标，确保风格统一
-    # 您可以根据需要制定更复杂的逻辑，例如使用 accent2, accent3 等
-    icon_color = theme_colors.get("accent1", "000000")  # 默认使用强调色1，如果没有则用黑色
+    try:
+        theme_colors = style_manager.color_palette
+    except AttributeError:
+        logging.error("无法从style_manager中找到 'color_palette' 属性。")
+        theme_colors = {}
+
+    # 从JSON获取原始颜色字符串 (例如, "#F48FB1")
+    raw_color = theme_colors.get("accent", "000000")
+    # 在传递前，移除可能存在的'#'
+    icon_color = raw_color.lstrip('#')
 
     png_image_stream = convert_svg_to_png_stream(svg_path, icon_color)
     if not png_image_stream:
         return
 
-    pres_width_emu, pres_height_emu = presentation_size
-    pres_width_inches = pres_width_emu / 914400
-    pres_height_inches = pres_height_emu / 914400
+    # --- 核心修正: 正确的尺寸和位置计算 ---
 
-    left = Inches(element_data["x"] * pres_width_inches)
-    top = Inches(element_data["y"] * pres_height_inches)
-    width = Inches(element_data["width"] * pres_width_inches)
-
+    # 1. 从 style_manager 获取 AI 使用的画布尺寸
     try:
-        slide.shapes.add_picture(png_image_stream, left, top, width=width)
-        print(f"成功添加SVG图标: '{keyword}' (颜色: #{icon_color})")
+        canvas_width = style_manager.canvas_width
+        canvas_height = style_manager.canvas_height
+    except AttributeError:
+        logging.error("无法从style_manager中找到 canvas_width/height 属性。使用默认值 1280x720。")
+        canvas_width = 1280
+        canvas_height = 720
+
+    # 2. 从 presentation_size 获取幻灯片的实际 EMU 尺寸
+    slide_width_emu, slide_height_emu = presentation_size
+
+    # 3. 将AI提供的、基于其虚拟画布的像素坐标，等比例地映射到幻灯片的EMU坐标系中。
+    #    这是最直接和正确的单位转换方法，确保所有元素遵循同一套渲染逻辑。
+    left_emu = Emu(int((element_data['x'] / canvas_width) * slide_width_emu))
+    top_emu = Emu(int((element_data['y'] / canvas_height) * slide_height_emu))
+    width_emu = Emu(int((element_data['width'] / canvas_width) * slide_width_emu))
+
+    # 注意：add_picture可以直接接收整数或Emu()对象
+    try:
+        # 使用 width_emu 来设置宽度，高度会自动按比例缩放
+        slide.shapes.add_picture(png_image_stream, left_emu, top_emu, width=width_emu)
+        logging.info(f"成功添加SVG图标: '{keyword}' (颜色: #{icon_color})")
     except Exception as e:
-        print(f"错误: 从流添加图片 '{keyword}' 时发生异常: {e}")
+        logging.error(f"从流添加图片 '{keyword}' 时发生异常: {e}")
     finally:
-        png_image_stream.close()
+        if png_image_stream:
+            png_image_stream.close()

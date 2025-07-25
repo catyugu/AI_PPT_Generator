@@ -1,3 +1,6 @@
+# 文件: styles.py
+# [最终修正版]
+
 import logging
 from pptx.util import Emu
 from pptx.dml.color import RGBColor
@@ -19,6 +22,15 @@ class PresentationStyle:
         self.design_info = plan
         self.color_palette = self.design_info.get('color_palette', {})
         self.font_pairing = self.design_info.get('font_pairing', {})
+
+        # --- 核心修正：计算并存储画布尺寸 ---
+        # 从plan中获取宽高比信息，如果不存在则默认为 '16:9'
+        aspect_ratio = plan.get('aspect_ratio', '16:9')
+        if aspect_ratio == "4:3":
+            self.canvas_width, self.canvas_height = 1024, 768
+        else:  # 默认为 16:9
+            self.canvas_width, self.canvas_height = 1280, 720
+        # ------------------------------------
 
         # 解析颜色，提供备用值
         self.primary = self._hex_to_rgb(self.color_palette.get('primary', '#0D47A1'))
