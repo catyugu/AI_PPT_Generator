@@ -187,6 +187,10 @@ def build_fade_out_effect(shape_id, next_id, duration_ms):
 # --- 模块三：动画系统的“服务员” ---
 def add_animation(shape, effect: str, **kwargs):
     """为一个形状添加指定的动画效果。"""
+    # If shape has no attribute 'shape_id'
+    if not hasattr(shape, 'shape_id'):
+        logging.warning(f"形状 {shape} 没有 shape_id 属性，无法添加动画效果。")
+        return
     logging.info(f"为形状 ID:{shape.shape_id} 添加 '{effect}' 动画...")
 
     main_anim_container, timing = get_or_create_main_anim_container(shape.part._element)
