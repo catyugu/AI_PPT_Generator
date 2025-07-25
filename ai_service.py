@@ -447,7 +447,7 @@ def generate_presentation_plan(theme: str, num_pages: int, aspect_ratio: str = "
                  "content": SYSTEM_PROMPT},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.55
+            temperature=0.5
         )
 
         response_content = response.choices[0].message.content
