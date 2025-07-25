@@ -8,7 +8,7 @@ from typing import List, Optional, Dict, Any
 
 from openai import OpenAI
 
-from config import ONEAPI_KEY, ONEAPI_BASE_URL, MODEL_CONFIG, SYSTEM_PROMPT, MAX_LAYOUT_RETRIES
+from config import ONEAPI_KEY, ONEAPI_BASE_URL, MODEL_CONFIG, SYSTEM_PROMPT, MAX_LAYOUT_RETRIES, VALID_ICON_KEYWORDS
 
 # ... (日志、客户端初始化、_extract_json_from_response, _call_ai 保持不变) ...
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -70,8 +70,6 @@ def _call_ai(prompt: str, model_name: str) -> dict | None:
     except Exception as e:
         logging.error(f"与OneAPI通信时发生严重错误: {e}", exc_info=True)
         return None
-
-
 # --- [最终版] 流水线阶段一：AI视觉总监 (配备专属案例) ---
 def _generate_design_system(theme: str) -> dict | None:
     """生成PPT的核心设计风格，并提供高度相关的案例供AI学习。"""
@@ -235,7 +233,7 @@ def _generate_slide_layout(page_content: dict, design_system: dict, all_pages_ou
     ---
     ### **核心设计规则 (必须严格遵守)**
     1.  **画布尺寸**: 所有坐标和尺寸都基于 **{canvas_width}x{canvas_height}** 的画布。
-    2.  **布局多样性**: 这是第 {page_index + 1} / {total_pages} 页。请考虑上下文，选择一个合适的 `layout_type` (如 `title_slide`, `image_left_content_right`, `full_screen_image_with_quote`, `three_column_comparison`, `data_chart_summary`, `team_introduction`)。**避免与可能的上一页布局过于雷同。**
+    2.  **布局多样性**: 这是第 {page_index + 1} / {total_pages} 页。请考虑上下文，选择一个合适的 `layout_type` (如 `title_slide`, `image_left_content_right", "full_screen_image_with_quote", "three_column_comparison", "data_chart_summary", "team_introduction`)。**避免与可能的上一页布局过于雷同。**
     3.  **视觉元素**: **内容页应至少包含一个视觉元素** (`image`, `shape`, `chart`, `table`, `icon`)。
     4.  **色彩对比度**: **这是一条绝对规则！** 在任何背景上放置文本时，必须确保高对比度。深色背景配浅色文字，浅色背景配深色文字。
     5.  **元素定义**: 严格遵循以下JSON结构。所有需要动画的元素**必须**包含唯一的`id`。
@@ -342,63 +340,84 @@ def _generate_slide_layout(page_content: dict, design_system: dict, all_pages_ou
              * **严格禁止**: 请**绝对不要使用** "思源黑体", "思源宋体", "苹方" 或任何需要用户额外安装的字体。
 
 
-    ---
-    ### **输出样例 (参考案例)**
-    你必须学习以下成功案例的布局和动画编排手法。
+        ---
+    ### **输出样例 (参考案例) **
+    你必须学习以下**所有**成功案例的布局和动画编排手法，并根据当前页面的内容，创造性地应用它们。
 
-    #### 案例1: 团队介绍页 (使用圆形裁剪、半透明背景和动画)
+    #### **案例1: 全屏图片引言页 (Full Screen Image with Quote)**
     {{
-      "layout_type": "team_introduction",
+      "layout_type": "full_screen_image_with_quote",
       "elements": [
-        {{ "id": "page_title", "type": "text_box", "x": 100, "y": 80, "width": 1080, "height": 60, "content": "核心团队成员", "style": {{ "font": {{ "type": "heading", "size": 36, "bold": true }}, "alignment": "CENTER" }}, "z_index": 20 }},
-        {{ "id": "shape_bg", "type": "shape", "shape_type": "rectangle", "x": 0, "y": 550, "width": 1280, "height": 170, "style": {{ "fill_color": "#4A4A4A", "opacity": 0.1 }}, "z_index": 10 }},
-        {{ "id": "member1_image", "type": "image", "x": 240, "y": 200, "width": 150, "height": 150, "image_keyword": "professional portrait of a smiling young woman", "style": {{ "crop": "circle" }}, "z_index": 15 }},
-        {{ "id": "member1_text", "type": "text_box", "x": 215, "y": 360, "width": 200, "height": 60, "content": "张三\\n产品经理", "style": {{ "font": {{ "type": "body", "size": 16 }}, "alignment": "CENTER" }}, "z_index": 25 }}
+        {{ "id": "background_image", "type": "image", "x": 0, "y": 0, "width": {canvas_width}, "height": {canvas_height}, "image_keyword": "tranquil landscape with morning mist", "style": {{ "opacity": 0.8 }}, "z_index": 5 }},
+        {{ "id": "quote_text", "type": "text_box", "x": {int(canvas_width*0.1)}, "y": {int(canvas_height*0.4)}, "width": {int(canvas_width*0.8)}, "height": {int(canvas_height*0.2)}, "content": "“设计的本质，是让生活更美好。”", "style": {{ "font": {{ "type": "heading", "size": 48, "color": "#FFFFFF", "bold": true }}, "alignment": "CENTER" }}, "z_index": 20 }},
+        {{ "id": "author_text", "type": "text_box", "x": {int(canvas_width*0.5)}, "y": {int(canvas_height*0.55)}, "width": {int(canvas_width*0.4)}, "height": {int(canvas_height*0.1)}, "content": "—— 著名设计师", "style": {{ "font": {{ "type": "body", "size": 22, "color": "#FFFFFF" }}, "alignment": "RIGHT" }}, "z_index": 20 }}
       ],
       "animation_sequence": [
-        {{ "element_id": "page_title", "animation": {{ "type": "fadeIn" }} }},
-        {{ "element_id": "member1_image", "animation": {{ "type": "flyIn", "direction": "fromLeft" }} }}
+        {{ "element_id": "background_image", "animation": {{ "type": "fadeIn", "duration_ms": 1000 }} }},
+        {{ "element_id": "quote_text", "animation": {{ "type": "flyIn", "direction": "fromTop", "duration_ms": 800 }} }}
       ]
     }}
 
-    #### 案例2: 功能介绍页 (左图右文)
+    #### **案例2: 三列对比/要点页 (Three Column Comparison)**
     {{
-      "layout_type": "image_left_content_right",
+      "layout_type": "three_column_comparison",
       "elements": [
-        {{ "id": "main_image", "type": "image", "x": 0, "y": 0, "width": 640, "height": 720, "image_keyword": "vibrant flat illustration of a mobile app interface", "z_index": 10 }},
-        {{ "id": "title_text", "type": "text_box", "x": 700, "y": 150, "width": 520, "height": 80, "content": "产品核心功能", "style": {{ "font": {{ "type": "heading", "size": 40, "bold": true }} }}, "z_index": 20 }},
-        {{ "id": "features_list", "type": "text_box", "x": 700, "y": 250, "width": 520, "height": 300, 
-           "content": [
-             "AI智能规划：一句话生成完整演示文稿。",
-             "丰富的设计模板：覆盖多种行业和场景。"
-           ],
-           "style": {{ "font": {{ "type": "body", "size": 22 }}, "alignment": "LEFT" }}, "z_index": 20
-        }}
+        {{ "id": "title", "type": "text_box", "x": 100, "y": 60, "width": 1080, "height": 60, "content": "我们的三大核心优势", "style": {{ "font": {{ "type": "heading", "size": 40, "bold": true }}, "alignment": "CENTER" }} }},
+        {{ "id": "col1_icon", "type": "icon", "x": 200, "y": 200, "width": 80, "height": 80, "icon_keyword": "cpu"}},
+        {{ "id": "col1_title", "type": "text_box", "x": 150, "y": 300, "width": 180, "height": 40, "content": "AI强力驱动", "style": {{ "font": {{ "type": "heading", "size": 24, "bold": true }}, "alignment": "CENTER" }} }},
+        {{ "id": "col1_text", "type": "text_box", "x": 150, "y": 350, "width": 180, "height": 200, "content": "基于最新模型，理解能力和生成质量遥遥领先。", "style": {{ "font": {{ "type": "body", "size": 16 }}, "alignment": "CENTER" }} }},
+        {{ "id": "col2_icon", "type": "icon", "x": 600, "y": 200, "width": 80, "height": 80, "icon_keyword": "settings"}},
+        {{ "id": "col2_title", "type": "text_box", "x": 550, "y": 300, "width": 180, "height": 40, "content": "高度可定制", "style": {{ "font": {{ "type": "heading", "size": 24, "bold": true }}, "alignment": "CENTER" }} }},
+        {{ "id": "col2_text", "type": "text_box", "x": 550, "y": 350, "width": 180, "height": 200, "content": "从颜色到字体，从布局到内容，一切尽在掌握。", "style": {{ "font": {{ "type": "body", "size": 16 }}, "alignment": "CENTER" }} }}
       ],
       "animation_sequence": [
-        {{ "element_id": "main_image", "animation": {{ "type": "fadeIn" }} }},
-        {{ "element_id": "title_text", "animation": {{ "type": "flyIn", "direction": "fromTop" }} }}
-      ]
-    }}
-
-    #### 案例3: 演示复杂动画序列和图层
-     {{
-      "layout_type": "content_reveal_with_layers",
-      "elements": [
-        {{ "id": "background_image", "type": "image", "x": 0, "y": 0, "width": 1280, "height": 720, "image_keyword": "modern city skyline at sunset", "z_index": 5, "style": {{ "opacity": 0.9 }} }},
-        {{ "id": "overlay_shape", "type": "shape", "shape_type": "rounded_rectangle", "x": 100, "y": 120, "width": 500, "height": 450, "style": {{ "fill_color": "#000000", "opacity": 0.4 }}, "z_index": 15 }},
-        {{ "id": "title", "type": "text_box", "x": 130, "y": 150, "width": 440, "height": 80, "content": "光影之城", "style": {{ "font": {{ "name": "微软雅黑", "size": 48, "bold": true, "color": "#FFFFFF" }}}}, "z_index": 25 }},
-        {{ "id": "point_1", "type": "text_box", "x": 130, "y": 250, "width": 440, "height": 100, "content": "探索都市脉搏与自然光影的交织。", "style": {{ "font": {{ "size": 20, "color": "#FFFFFF" }}}}, "z_index": 25 }},
-        {{ "id": "point_2", "type": "text_box", "x": 130, "y": 350, "width": 440, "height": 100, "content": "运用半透明背景块，突出文字信息。", "style": {{ "font": {{ "size": 20, "color": "#FFFFFF" }}}}, "z_index": 25 }}
-      ],
-      "animation_sequence": [
-        {{ "element_id": "background_image", "animation": {{ "type": "fadeIn" }} }},
-        {{ "element_id": "overlay_shape", "animation": {{ "type": "flyIn", "direction": "fromLeft" }} }},
         {{ "element_id": "title", "animation": {{ "type": "fadeIn" }} }},
-        {{ "element_id": "point_1", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }},
-        {{ "element_id": "point_2", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }}
+        {{ "element_id": "col1_icon", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }},
+        {{ "element_id": "col2_icon", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }}
       ]
-     }}
+    }}
+
+    #### **案例3: 数据图表总结页 (Data Chart Summary)**
+    {{
+      "layout_type": "data_chart_summary",
+      "elements": [
+        {{ "id": "chart_title", "type": "text_box", "x": 100, "y": 80, "width": 1080, "height": 60, "content": "近三年用户增长趋势", "style": {{ "font": {{ "type": "heading", "size": 36, "bold": true }}, "alignment": "LEFT" }} }},
+        {{ "id": "main_chart", "type": "chart", "x": 100, "y": 180, "width": 800, "height": 450, 
+           "chart_type": "line", "title": "用户增长曲线",
+           "data": {{ 
+             "categories": ["2022", "2023", "2024"], 
+             "series": [
+               {{ "name": "App下载量 (万)", "values": [120, 250, 480] }},
+               {{ "name": "网站访问量 (万)", "values": [300, 550, 880] }}
+             ]
+           }}
+        }},
+        {{ "id": "chart_conclusion", "type": "text_box", "x": 950, "y": 250, "width": 250, "height": 300, "content": "**结论:**\\n- App下载量呈现指数级增长。\\n- 网站流量稳步提升，市场认知度扩大。", "style": {{ "font": {{ "type": "body", "size": 20 }} }} }}
+      ],
+       "animation_sequence": [
+        {{ "element_id": "chart_title", "animation": {{ "type": "fadeIn" }} }},
+        {{ "element_id": "main_chart", "animation": {{ "type": "fadeIn" }} }},
+        {{ "element_id": "chart_conclusion", "animation": {{ "type": "flyIn", "direction": "fromRight" }} }}
+      ]
+    }}
+
+    #### **案例4: 流程/时间轴页 (Process/Timeline)**
+    {{
+        "layout_type": "process_timeline",
+        "elements": [
+            {{ "id": "proc_title", "type": "text_box", "x": 100, "y": 80, "width": 1080, "height": 60, "content": "我们的四步服务流程", "style": {{ "font": {{ "type": "heading", "size": 36, "bold": true }}, "alignment": "CENTER" }} }},
+            {{ "id": "arrow_line", "type": "shape", "shape_type": "rectangle", "x": 200, "y": 358, "width": 880, "height": 4, "style": {{ "fill_color": "#CE93D8", "opacity": 0.5 }}, "z_index": 10}},
+            {{ "id": "step1_circle", "type": "shape", "shape_type": "oval", "x": 180, "y": 320, "width": 80, "height": 80, "style": {{ "fill_color": "#7B1FA2" }}, "z_index": 20}},
+            {{ "id": "step1_text", "type": "text_box", "x": 155, "y": 420, "width": 130, "height": 60, "content": "**第一步**\\n需求沟通", "style": {{ "font": {{ "type": "body", "size": 18 }}, "alignment": "CENTER" }} }},
+            {{ "id": "step2_circle", "type": "shape", "shape_type": "oval", "x": 460, "y": 320, "width": 80, "height": 80, "style": {{ "fill_color": "#7B1FA2" }}, "z_index": 20}}
+        ],
+        "animation_sequence": [
+            {{ "element_id": "proc_title", "animation": {{ "type": "fadeIn"}} }},
+            {{ "element_id": "arrow_line", "animation": {{ "type": "fadeIn", "duration_ms": 500 }} }},
+            {{ "element_id": "step1_circle", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }},
+            {{ "element_id": "step2_circle", "animation": {{ "type": "flyIn", "direction": "fromBottom" }} }}
+        ]
+    }}
     ---
     现在，请为当前页面设计布局和动画，并输出最终的JSON对象。
     """
@@ -440,109 +459,166 @@ def _generate_slide_layout_with_retry(page_content: dict, design_system: dict, a
 
     logging.error(f"  - 经过 {MAX_LAYOUT_RETRIES} 次尝试后，仍无法为第 {page_index + 1} 页生成有效布局。")
     return None  # 所有尝试均告失败
+
 # --- [最终版] 主函数：编排“拥有案例手册的专家流水线” ---
+def _validate_and_correct_slide_layout(slide_json_str: str, canvas_width: int, canvas_height: int) -> dict | None:
+    """
+    引入一个更智能的AI质检员，负责检查和修正单页布局JSON。
+    """
+    prompt = f"""
+    你是一名资深的演示文稿（PPT）艺术指导兼质检专家。你的任务是接收一个单页PPT布局的JSON草稿，以设计的眼光进行严格审查，并输出一个经过精细修正的、生产就绪的完美JSON。
+
+    ### **质检清单 (必须严格遵守)**
+
+    1.  **JSON格式校验**: 确保整个输入是完整且语法正确的JSON。如果不是，尽最大努力修复它。
+
+    2.  **智能布局审查 (核心任务)**:
+        * **区分“层叠”与“碰撞”**: 你必须理解，并非所有重叠都是错误的。
+            * **允许的层叠 (Intentional Layering)**: 通常是设计需要，例如：文字放在背景卡片上、图标放在形状上、装饰性图形与图片部分重叠。**判断线索**：元素通常有不同的`z_index`值，高`z_index`的元素覆盖在低`z_index`的元素上。
+            * **不允许的碰撞 (Unintentional Collision)**: 破坏可读性和美观性的重叠。例如：两段独立的`text_box`互相重叠、关键信息被其他元素遮挡。
+        * **文本溢出预判 (关键能力)**: **不要只看文本框的`height`！** 你必须**预估**文本在框内换行后实际占用的高度。
+            * **预估方法**: 使用这个心算公式：`估算行数 = (文本字符总数 / (width / (fontSize * 0.6)))`，`估算渲染高度 = 估算行数 * fontSize * 1.5`。使用这个**估算渲染高度**来判断是否会与下方元素碰撞。
+        * **修正原则**:
+            * 对于**不允许的碰撞**，应采取符合设计美学的修正策略：
+                * **优先移动**: 轻微移动碰撞元素的位置（通常是向下或向右），以腾出空间。修正时尽量保持对齐。
+                * **其次调整尺寸**: 如果移动解决不了问题，可适当减小元素的`width`或`height`。
+                * **谨慎删除**: 除非元素完全多余，否则不要轻易删除。
+            * 对于**允许的层叠**，**必须保留**，不要错误地修正它们。
+
+    3.  **图标库校验**:
+        * 检查所有`"type": "icon"`的元素，其`icon_keyword`值**必须**存在于官方图标库列表中。
+        * **修正原则**: 如果发现无效关键词，从列表中找一个**语义最相近的**替换它。
+        * **官方图标库列表**: {json.dumps(VALID_ICON_KEYWORDS)}
+
+    4.  **动画逻辑校验**:
+        * 检查`animation_sequence`，确保每个`element_id`都真实存在于`elements`数组中。
+        * **修正原则**: 如果动画指向了不存在的`element_id`，**直接从`animation_sequence`数组中删除该动画对象**。
+
+    ### **输入/输出格式**
+    * **输入**: 一个可能存在问题的JSON草稿字符串。
+    * **输出**: **必须**是一个单一的、经过你修正后的、完美的JSON对象。**不要添加任何解释性文字或代码块标记**。
+
+    ---
+    ### **示例**
+
+    **输入 (有问题的JSON草稿):**
+    ```json
+    {{
+      "layout_type": "advanced_problem_slide",
+      "elements": [
+        {{ "id": "card_bg", "type": "shape", "shape_type": "rectangle", "x": 100, "y": 150, "width": 1080, "height": 300, "style": {{ "fill_color": "#EEEEEE" }}, "z_index": 10 }},
+        {{ "id": "card_title", "type": "text_box", "x": 120, "y": 170, "width": 1040, "height": 40, "content": "这是一个卡片标题", "style": {{ "font": {{ "size": 24 }} }}, "z_index": 20 }},
+        // 问题1: 下面的文本框高度只有40，但内容很长，会与下面的图片碰撞
+        {{ "id": "long_text", "type": "text_box", "x": 120, "y": 220, "width": 1040, "height": 40, "content": "这是一段非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的描述文本，它肯定会换行并与下方的图片元素产生严重的视觉重叠。", "style": {{ "font": {{ "size": 18 }} }}, "z_index": 20 }},
+        // 问题2: 这张图片与上面的文本框实际渲染后会重叠
+        {{ "id": "colliding_image", "type": "image", "x": 100, "y": 250, "width": 500, "height": 300, "image_keyword": "modern office" }}
+      ]
+    }}
+    ```
+
+    **输出 (修正后的完美JSON):**
+    ```json
+    {{
+      "layout_type": "advanced_problem_slide",
+      "elements": [
+        // 允许的层叠：标题在背景卡片上，z_index正确，予以保留
+        {{ "id": "card_bg", "type": "shape", "shape_type": "rectangle", "x": 100, "y": 150, "width": 1080, "height": 450, "style": {{ "fill_color": "#EEEEEE" }}, "z_index": 10 }}, // 修正：智能地增加了背景卡片的高度以容纳所有内容
+        {{ "id": "card_title", "type": "text_box", "x": 120, "y": 170, "width": 1040, "height": 40, "content": "这是一个卡片标题", "style": {{ "font": {{ "size": 24 }} }}, "z_index": 20 }},
+        // 修正：智能地增加了文本框的高度以匹配其内容
+        {{ "id": "long_text", "type": "text_box", "x": 120, "y": 220, "width": 1040, "height": 100, "content": "这是一段非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的描述文本，它肯定会换行并与下方的图片元素产生严重的视觉重叠。", "style": {{ "font": {{ "size": 18 }} }}, "z_index": 20 }},
+        // 修正：将图片下移以避免与上面的长文本发生碰撞
+        {{ "id": "colliding_image", "type": "image", "x": 100, "y": 350, "width": 500, "height": 200, "image_keyword": "modern office" }} // 修正：同时可能调整了尺寸以适应新的布局
+      ]
+    }}
+    ```
+    ---
+    现在，请对以下JSON草稿进行质检和修正：
+
+    ```json
+    {slide_json_str}
+    ```
+    """
+    model = MODEL_CONFIG.get("inspector", MODEL_CONFIG.get("planner", "glm-4"))
+    return _call_ai(prompt, model)
+
 def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str = "16:9") -> dict | None:
     """
-    通过分阶段、并发执行、带重试与容错的AI专家流水线，高效生成完整的、高质量的演示文稿计划。
+    最终版流水线，集成了AI质检员。
     """
-    logging.info("--- 开始AI专家流水线生成任务 (带并发引擎、纠错与重试) ---")
+    logging.info("--- 开始AI专家流水线生成任务 (带AI质检员) ---")
 
-    # 阶段一：生成设计系统
-    logging.info("[阶段 1/3] 正在由“视觉总监”生成核心设计系统...")
+    # 阶段一、二保持不变...
     design_system = _generate_design_system(theme)
-    if not design_system:
-        logging.error("设计系统生成失败，任务中止。")
-        return None
-    logging.info("核心设计系统已生成。")
-
-    # 阶段二：生成内容大纲
-    logging.info("[阶段 2/3] 正在由“信息架构师”生成内容大纲...")
+    if not design_system: return None
     content_outline = _generate_content_outline(theme, num_pages)
-    if not content_outline or 'pages' not in content_outline:
-        logging.error("内容大纲生成失败，任务中止。")
-        return None
-    logging.info("内容大纲已生成。")
+    if not content_outline or 'pages' not in content_outline: return None
 
-    # 阶段三：并发处理页面布局（已集成重试与容错）
-    logging.info("[阶段 3/3] “排版导演团队”开始并行设计布局与动画...")
     final_pages: List[Optional[Dict[str, Any]]] = [None] * len(content_outline['pages'])
     canvas_width, canvas_height = (1024, 768) if aspect_ratio == "4:3" else (1280, 720)
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         future_to_index = {
             executor.submit(
-                # [修改] 调用新的带重试的函数
                 _generate_slide_layout_with_retry,
-                page_content,
-                design_system,
-                content_outline['pages'],
-                i,
-                len(content_outline['pages']),
-                aspect_ratio
-            ): i
-            for i, page_content in enumerate(content_outline['pages'])
+                page_content, design_system, content_outline['pages'],
+                i, len(content_outline['pages']), aspect_ratio
+            ): i for i, page_content in enumerate(content_outline['pages'])
         }
 
         for future in as_completed(future_to_index):
             index = future_to_index[future]
             try:
-                slide_layout = future.result()
+                slide_layout_draft = future.result()
 
-                # [修改] 增加容错逻辑
-                if slide_layout:
-                    # --- AI纠错层：清理无效动画 ---
-                    existing_element_ids = {element['id'] for element in slide_layout.get('elements', []) if
-                                            'id' in element}
-                    if "animation_sequence" in slide_layout:
-                        valid_animations = [
-                            anim for anim in slide_layout.get('animation_sequence', [])
-                            if anim.get('element_id') in existing_element_ids
-                        ]
-                        if len(valid_animations) < len(slide_layout.get('animation_sequence', [])):
-                            logging.warning(f"  - 第 {index + 1} 页：已自动清理无效的动画引用。")
-                        slide_layout['animation_sequence'] = valid_animations
-                    # --- 纠错层结束 ---
-                    final_pages[index] = slide_layout
+                if slide_layout_draft:
+                    logging.info(f"  - 第 {index + 1} 页：布局草稿已生成，送往AI质检员进行审核...")
+
+                    # [核心改造] 将草稿送往AI质检员进行修正
+                    corrected_layout = _validate_and_correct_slide_layout(
+                        json.dumps(slide_layout_draft, ensure_ascii=False),
+                        canvas_width,
+                        canvas_height
+                    )
+
+                    if corrected_layout:
+                        logging.info(f"  - 第 {index + 1} 页：AI质检完成并已修正。")
+                        final_pages[index] = corrected_layout
+                    else:
+                        logging.warning(f"  - 第 {index + 1} 页：AI质检失败，保留原始草稿。")
+                        final_pages[index] = slide_layout_draft  # 如果质检失败，保留原始版本
                 else:
-                    # [容错] 如果重试最终失败，生成一个明确的错误提示页
+                    # 容错逻辑不变...
                     logging.error(f"  - 第 {index + 1} 页布局生成永久失败，将使用错误提示页。")
                     final_pages[index] = {
                         "layout_type": "fallback_error",
                         "elements": [{
-                            "id": "error_text",
-                            "type": "text_box",
-                            "content": f"页面 {index + 1}\n生成失败",
+                            "id": "error_text", "type": "text_box", "content": f"页面 {index + 1}\n生成失败",
                             "x": int(canvas_width * 0.1), "y": int(canvas_height * 0.4),
                             "width": int(canvas_width * 0.8), "height": int(canvas_height * 0.2),
-                            "style": {
-                                "font": {"type": "heading", "size": 48, "color": "#E53935", "bold": True},
-                                "alignment": "CENTER"
-                            }
+                            "style": {"font": {"type": "heading", "size": 48, "color": "#E53935", "bold": True},
+                                      "alignment": "CENTER"}
                         }]
                     }
-
             except Exception as exc:
                 logging.error(f"  - 处理第 {index + 1} 页的设计结果时发生严重错误: {exc}", exc_info=True)
                 final_pages[index] = {
                     "layout_type": "fallback_error",
                     "elements": [
-                        {"type": "text_box", "content": f"页面 {index + 1} 处理异常", "x": 100, "y": 100, "width": 1080,
+                        {"type": "text_box", "content": f"页面 {index + 1} 处理异常", "x": 100, "y": 100,
+                         "width": 1080,
                          "height": 100, "style": {"font": {"type": "heading", "size": 36, "color": "#E53935"}}}]
                 }
 
-    # 组装最终计划
+    # 组装最终计划的逻辑不变...
     if all(p is None for p in final_pages):
         logging.error("所有页面布局均生成失败，任务中止。")
         return None
 
     final_plan = {
         **design_system,
-        "master_slide": {
-            "background": {"color": design_system.get("color_palette", {}).get("background", "#FFFFFF")}
-        },
-        "pages": [p for p in final_pages if p]  # 过滤掉可能的None值
+        "master_slide": {"background": {"color": design_system.get("color_palette", {}).get("background", "#FFFFFF")}},
+        "pages": [p for p in final_pages if p]
     }
-
     logging.info("--- AI专家流水线任务全部完成 ---")
     return final_plan
 
