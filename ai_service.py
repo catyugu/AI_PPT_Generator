@@ -204,15 +204,23 @@ def _generate_content_outline(theme: str, num_pages: int) -> dict | None:
 
 
 # --- [最终版] 流水线阶段三：AI排版导演 (配备专属案例) ---
-def _generate_slide_layout(page_content: dict, design_system: dict, page_index: int, total_pages: int,
-                           aspect_ratio: str) -> dict | None:
+def _generate_slide_layout(page_content: dict, design_system: dict, all_pages_outline: list,
+                           page_index: int, total_pages: int, aspect_ratio: str) -> dict | None:
     """为单页内容设计布局和动画，并提供高度相关的案例供AI学习。"""
     canvas_width, canvas_height = (1024, 768) if aspect_ratio == "4:3" else (1280, 720)
 
-    prompt = f"""
-    你是一位精通**布局、动画和视觉传达**的演示文稿排版导演。
-    你的任务是为**一页**幻灯片进行详细的视觉设计。
+    full_outline_str = "\n".join(
+        [f"- 第{i + 1}页: {p.get('title', '无标题')}" for i, p in enumerate(all_pages_outline)])
 
+    prompt = f"""
+       你是一位精通布局、动画和视觉传达的演示文稿排版导演。
+       你的任务是为一部拥有完整剧本的演示文稿，设计其中**一页**的详细视觉方案。
+
+       ### **剧本大纲 (全局上下文)**
+       这是整个演示文稿的故事线，你要设计的页面是其中的一部分：
+       {full_outline_str}
+
+       ---
     **全局设计规范 (必须遵守):**
     - **设计理念**: {design_system.get('design_concept', '无')}
     - **字体搭配**: {json.dumps(design_system.get('font_pairing'), ensure_ascii=False)}
@@ -431,6 +439,7 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
                 _generate_slide_layout,
                 page_content,
                 design_system,
+                content_outline['pages'],
                 i,
                 len(content_outline['pages']),
                 aspect_ratio
