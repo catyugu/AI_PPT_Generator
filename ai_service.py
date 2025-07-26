@@ -3,7 +3,6 @@ import json
 import logging
 import re
 import time
-from concurrent.futures import as_completed, ThreadPoolExecutor
 from typing import List, Optional, Dict, Any
 
 from openai import OpenAI
@@ -23,31 +22,52 @@ except ValueError as e:
 
 
 def _extract_json_from_response(text: str) -> str | None:
-    # ... (此辅助函数保持不变) ...
+    # 辅助函数，用于从可能包含杂质的文本中提取出JSON部分
     try:
-        text = re.sub(r'```json\s*', '', text, flags=re.IGNORECASE)
-        text = re.sub(r'```', '', text)
+        # 寻找第一个 '{' 和最后一个 '}'
         start_index = text.find('{')
         end_index = text.rfind('}')
         if start_index != -1 and end_index != -1 and end_index > start_index:
             json_block = text[start_index:end_index + 1]
-            json_block = re.sub(r'//.*', '', json_block)
-            json_block = re.sub(r'/\*.*?\*/', '', json_block, flags=re.DOTALL)
             return json_block
         logging.warning("在AI响应中未找到有效的JSON对象边界。")
         return None
     except Exception as e:
-        logging.error(f"提取和清理JSON时出错: {e}")
+        logging.error(f"提取JSON时出错: {e}")
         return None
 
 
-def _call_ai(prompt: str, model_name: str) -> dict | None:
-    # ... (此通用调用函数保持不变) ...
+def _call_ai_and_parse_json(prompt: str, model_name: str) -> dict | None:
+    # 用于需要直接返回有效JSON的、较为简单的任务
     if not client:
         logging.error("OneAPI client not initialized.")
         return None
     try:
-        logging.info(f"正在通过OneAPI调用模型 '{model_name}'...")
+        logging.info(f"正在通过OneAPI调用模型 '{model_name}' 并期望获得JSON...")
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.6,
+        )
+        response_content = response.choices[0].message.content
+        if response_content:
+            return json.loads(response_content) # 直接加载，因为开启了JSON模式
+        logging.error("AI响应内容为空。")
+        return None
+    except json.JSONDecodeError as e:
+        logging.error(f"JSON解码失败: {e}。原始响应: {response_content[:500]}")
+        return None
+
+
+def _call_ai_and_extract_manually(prompt: str, model_name: str) -> dict | None:
+    # 手动提取JSON的后备方法
+    if not client:
+        logging.error("OneAPI client not initialized.")
+        return None
+    try:
         response = client.chat.completions.create(
             model=model_name,
             messages=[
@@ -60,13 +80,34 @@ def _call_ai(prompt: str, model_name: str) -> dict | None:
         if response_content:
             json_string = _extract_json_from_response(response_content)
             if json_string:
-                cleaned_json_string = re.sub(r',\s*([}\]])', r'\1', json_string)
+                cleaned_json_string = re.sub(r',\s*([}\]])', r'\1', json_string) # 移除悬空逗号
                 return json.loads(cleaned_json_string)
         logging.error("AI响应内容为空或提取JSON失败。")
         return None
     except json.JSONDecodeError as e:
-        logging.error(f"JSON解码失败: {e}。")
+        logging.error(f"手动提取后JSON解码失败: {e}。")
         return None
+    except Exception as e:
+        logging.error(f"与OneAPI通信时发生严重错误: {e}", exc_info=True)
+        return None
+
+
+def _get_raw_ai_response(prompt: str, model_name: str) -> str | None:
+    # [新] 这个函数只获取AI的原始字符串响应，不做任何解析
+    if not client:
+        logging.error("OneAPI client not initialized.")
+        return None
+    try:
+        logging.info(f"正在通过OneAPI调用模型 '{model_name}' 并获取原始字符串响应...")
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.6
+        )
+        return response.choices[0].message.content
     except Exception as e:
         logging.error(f"与OneAPI通信时发生严重错误: {e}", exc_info=True)
         return None
@@ -131,7 +172,7 @@ def _generate_design_system(theme: str) -> dict | None:
     现在，请为主题 **“{theme}”** 生成一个全新的、符合上述所有要求的设计系统JSON。
     """
     model = MODEL_CONFIG.get("designer", "glm-4")
-    return _call_ai(prompt, model)
+    return _call_ai_and_parse_json(prompt, model)
 
 
 # --- [最终版] 流水线阶段二：AI信息架构师 (配备专属案例) ---
@@ -198,21 +239,49 @@ def _generate_content_outline(theme: str, num_pages: int) -> dict | None:
     现在，请为主题 **“{theme}”** 生成一个全新的、包含 **{num_pages}** 页的完整内容大纲JSON。
     """
     model = MODEL_CONFIG.get("writer", "glm-4")
-    return _call_ai(prompt, model)
-
+    return _call_ai_and_parse_json(prompt, model)
 
 # --- [最终版] 流水线阶段三：AI排版导演 (配备专属案例) ---
-def _generate_slide_layout(page_content: dict, design_system: dict, all_pages_outline: list,
-                           page_index: int, total_pages: int, aspect_ratio: str) -> dict | None:
-    """为单页内容设计布局和动画，并提供高度相关的案例供AI学习。"""
+def _generate_slide_layout(
+    page_content: dict,
+    design_system: dict,
+    all_pages_outline: list,
+    page_index: int,
+    total_pages: int,
+    aspect_ratio: str,
+    previous_slide_layout: Optional[Dict] = None,  # <<< 新增参数
+) -> str | None:
+    """为单页内容设计布局和动画，并提供高度相关的案例及上一页的布局作为上下文。"""
     canvas_width, canvas_height = (1024, 768) if aspect_ratio == "4:3" else (1280, 720)
 
     full_outline_str = "\n".join(
-        [f"- 第{i + 1}页: {p.get('title', '无标题')}" for i, p in enumerate(all_pages_outline)])
+        [f"- 第{i + 1}页: {p.get('title', '无标题')}" for i, p in enumerate(all_pages_outline)]
+    )
 
+    # <<< 新增逻辑：构建上一页的上下文Prompt >>>
+    context_prompt = ""
+    if page_index > 0 and previous_slide_layout:
+        # 为了防止Prompt过长，可以只包含关键信息或整个JSON
+        previous_layout_str = json.dumps(previous_slide_layout, ensure_ascii=False, indent=2)
+        context_prompt = f"""
+            ---
+            ### **重要参考：上一页 (第 {page_index} 页) 的最终布局**
+            这是你刚刚完成的前一页的布局JSON。请仔细分析它的结构、`layout_type`、图片位置和元素排布。
+            
+            ```json
+            {previous_layout_str}
+            本页设计指导原则
+            寻求变化，避免重复: 这是最重要的规则！ 请绝对不要与上一页使用完全相同的布局结构。例如，如果上一页是“左图右文”，请在本页中创造性地使用“右图左文”、“全屏大图”、“三栏对比”等不同版式。
+            
+            保持风格连贯: 布局结构需要变化，但整体的设计感（如颜色、字体、间距）应与全局规范和上一页保持和谐。
+            
+            聚焦当前任务: 以下才是你需要为当前页面（第 {page_index + 1} 页）设计的具体内容。
+            """
     prompt = f"""
        你是一位精通布局、动画和视觉传达的演示文稿排版导演。
        你的任务是为一部拥有完整剧本的演示文稿，设计其中**一页**的详细视觉方案。
+       
+       {context_prompt}
 
        ### **剧本大纲 (全局上下文)**
        这是整个演示文稿的故事线，你要设计的页面是其中的一部分：
@@ -422,194 +491,197 @@ def _generate_slide_layout(page_content: dict, design_system: dict, all_pages_ou
     现在，请为当前页面设计布局和动画，并输出最终的JSON对象。
     """
     model = MODEL_CONFIG.get("planner", "glm-4")
-    return _call_ai(prompt, model)
+    return _get_raw_ai_response(prompt, model)  # <<< 关键：调用获取原始字符串的函数
 
-
-def _generate_slide_layout_with_retry(page_content: dict, design_system: dict, all_pages_outline: list,
-                                      page_index: int, total_pages: int, aspect_ratio: str) -> dict | None:
-    """
-    调用布局生成函数，并集成重试逻辑。
-    """
-    for attempt in range(MAX_LAYOUT_RETRIES):
-        logging.info(f"  - 正在生成第 {page_index + 1} 页布局 (尝试 {attempt + 1}/{MAX_LAYOUT_RETRIES})...")
-        try:
-            slide_layout = _generate_slide_layout(
-                page_content,
-                design_system,
-                all_pages_outline,
-                page_index,
-                total_pages,
-                aspect_ratio
-            )
-            # 成功条件：返回非空且包含 'elements' 键
-            if slide_layout and "elements" in slide_layout:
-                logging.info(f"  - 第 {page_index + 1} 页布局生成成功。")
-                return slide_layout
-
-            logging.warning(f"  - 第 {page_index + 1} 页布局生成失败，返回内容不符合预期。")
-
-        except Exception as e:
-            logging.error(f"  - 第 {page_index + 1} 页布局生成时发生异常: {e}", exc_info=True)
-
-        # 如果不是最后一次尝试，则等待一段时间后重试
-        if attempt < MAX_LAYOUT_RETRIES - 1:
-            wait_time = (attempt + 1) * 2  # 逐渐增加等待时间 (2s, 4s)
-            logging.info(f"  - 将在 {wait_time} 秒后重试...")
-            time.sleep(wait_time)
-
-    logging.error(f"  - 经过 {MAX_LAYOUT_RETRIES} 次尝试后，仍无法为第 {page_index + 1} 页生成有效布局。")
-    return None  # 所有尝试均告失败
-
-# --- [最终版] 主函数：编排“拥有案例手册的专家流水线” ---
 def _validate_and_correct_slide_layout(slide_json_str: str, canvas_width: int, canvas_height: int) -> dict | None:
     """
-    引入一个更智能的AI质检员，负责检查和修正单页布局JSON。
+    [V2版] 引入一个更智能、更挑剔的AI首席视觉官，负责审查和升华单页布局JSON。
     """
     prompt = f"""
-    你是一名资深的演示文稿（PPT）艺术指导兼质检专家。你的任务是接收一个单页PPT布局的JSON草稿，以设计的眼光进行严格审查，并输出一个经过精细修正的、生产就绪的完美JSON。
+    你是一位极度挑剔且才华横溢的演示文稿（PPT）首席视觉官(Chief Visual Officer)。你的审美标准极高，对细节的把控到了像素级别。你的任务是接收一个由初级设计师完成的JSON布局草稿，不仅要修复其中明显的错误，更要以你的专业眼光，将它打磨成一件平衡、精致、专业且富有美感的艺术品。
 
-    ### **质检清单 (必须严格遵守)**
-
-    1.  **JSON格式校验**: 确保整个输入是完整且语法正确的JSON。如果不是，尽最大努力修复它。
-
-    2.  **智能布局审查 (核心任务)**:
-        * **区分“层叠”与“碰撞”**: 你必须理解，并非所有重叠都是错误的。
-            * **允许的层叠 (Intentional Layering)**: 通常是设计需要，例如：文字放在背景卡片上、图标放在形状上、装饰性图形与图片部分重叠。**判断线索**：元素通常有不同的`z_index`值，高`z_index`的元素覆盖在低`z_index`的元素上。
-            * **不允许的碰撞 (Unintentional Collision)**: 破坏可读性和美观性的重叠。例如：两段独立的`text_box`互相重叠、关键信息被其他元素遮挡。
-        * **文本溢出预判 (关键能力)**: **不要只看文本框的`height`！** 你必须**预估**文本在框内换行后实际占用的高度。
-            * **预估方法**: 使用这个心算公式：`估算行数 = (文本字符总数 / (width / (fontSize * 0.6)))`，`估算渲染高度 = 估算行数 * fontSize * 1.5`。使用这个**估算渲染高度**来判断是否会与下方元素碰撞。
-        * **修正原则**:
-            * 对于**不允许的碰撞**，应采取符合设计美学的修正策略：
-                * **优先移动**: 轻微移动碰撞元素的位置（通常是向下或向右），以腾出空间。修正时尽量保持对齐。
-                * **其次调整尺寸**: 如果移动解决不了问题，可适当减小元素的`width`或`height`。
-                * **谨慎删除**: 除非元素完全多余，否则不要轻易删除。
-            * 对于**允许的层叠**，**必须保留**，不要错误地修正它们。
-
-    3.  **图标库校验**:
-        * 检查所有`"type": "icon"`的元素，其`icon_keyword`值**必须**存在于官方图标库列表中。
-        * **修正原则**: 如果发现无效关键词，从列表中找一个**语义最相近的**替换它。
-        * **官方图标库列表**: {json.dumps(VALID_ICON_KEYWORDS)}
-
-    4.  **动画逻辑校验**:
-        * 检查`animation_sequence`，确保每个`element_id`都真实存在于`elements`数组中。
-        * **修正原则**: 如果动画指向了不存在的`element_id`，**直接从`animation_sequence`数组中删除该动画对象**。
-
-    ### **输入/输出格式**
-    * **输入**: 一个可能存在问题的JSON草稿字符串。
-    * **输出**: **必须**是一个单一的、经过你修正后的、完美的JSON对象。**不要添加任何解释性文字或代码块标记**。
+    你的画布尺寸为 {canvas_width}x{canvas_height} 像素。
 
     ---
-    ### **示例**
+    ### **第一阶段：硬性错误修复 (Technical Bug Fixing)**
+    你必须首先修复所有技术层面的硬伤。
 
-    **输入 (有问题的JSON草稿):**
-    ```json
-    {{
-      "layout_type": "advanced_problem_slide",
-      "elements": [
-        {{ "id": "card_bg", "type": "shape", "shape_type": "rectangle", "x": 100, "y": 150, "width": 1080, "height": 300, "style": {{ "fill_color": "#EEEEEE" }}, "z_index": 10 }},
-        {{ "id": "card_title", "type": "text_box", "x": 120, "y": 170, "width": 1040, "height": 40, "content": "这是一个卡片标题", "style": {{ "font": {{ "size": 24 }} }}, "z_index": 20 }},
-        // 问题1: 下面的文本框高度只有40，但内容很长，会与下面的图片碰撞
-        {{ "id": "long_text", "type": "text_box", "x": 120, "y": 220, "width": 1040, "height": 40, "content": "这是一段非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的描述文本，它肯定会换行并与下方的图片元素产生严重的视觉重叠。", "style": {{ "font": {{ "size": 18 }} }}, "z_index": 20 }},
-        // 问题2: 这张图片与上面的文本框实际渲染后会重叠
-        {{ "id": "colliding_image", "type": "image", "x": 100, "y": 250, "width": 500, "height": 300, "image_keyword": "modern office" }}
-      ]
-    }}
-    ```
+    1.  **JSON格式校验**: 确保输入是完整且语法正确的JSON。如果存在语法错误（如悬空的逗号），必须修复。
+    2.  **图标库校验**: 检查所有 `"type": "icon"` 元素，其 `icon_keyword` **必须**存在于官方列表中。如果无效，从列表中找一个**语义最相近的**替换它。
+        * **官方图标库**: {json.dumps(VALID_ICON_KEYWORDS)}
+    3.  **动画逻辑校验**: 检查 `animation_sequence`，确保每个 `element_id` 都真实存在于 `elements` 数组中。如果动画指向了不存在的`element_id`，**果断从 `animation_sequence` 数组中删除该动画对象**。
 
-    **输出 (修正后的完美JSON):**
-    ```json
-    {{
-      "layout_type": "advanced_problem_slide",
-      "elements": [
-        // 允许的层叠：标题在背景卡片上，z_index正确，予以保留
-        {{ "id": "card_bg", "type": "shape", "shape_type": "rectangle", "x": 100, "y": 150, "width": 1080, "height": 450, "style": {{ "fill_color": "#EEEEEE" }}, "z_index": 10 }}, // 修正：智能地增加了背景卡片的高度以容纳所有内容
-        {{ "id": "card_title", "type": "text_box", "x": 120, "y": 170, "width": 1040, "height": 40, "content": "这是一个卡片标题", "style": {{ "font": {{ "size": 24 }} }}, "z_index": 20 }},
-        // 修正：智能地增加了文本框的高度以匹配其内容
-        {{ "id": "long_text", "type": "text_box", "x": 120, "y": 220, "width": 1040, "height": 100, "content": "这是一段非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常非常长的描述文本，它肯定会换行并与下方的图片元素产生严重的视觉重叠。", "style": {{ "font": {{ "size": 18 }} }}, "z_index": 20 }},
-        // 修正：将图片下移以避免与上面的长文本发生碰撞
-        {{ "id": "colliding_image", "type": "image", "x": 100, "y": 350, "width": 500, "height": 200, "image_keyword": "modern office" }} // 修正：同时可能调整了尺寸以适应新的布局
-      ]
-    }}
-    ```
     ---
-    现在，请对以下JSON草稿进行质检和修正：
+    ### **第二阶段：专业布局审查与优化 (Professional Layout Review & Enhancement)**
+    这是你的核心价值所在。在脑海中建立一个**虚拟网格系统**和**80像素的安全边距**。所有核心内容都应位于安全边距之内。
+
+    #### **A. 元素碰撞与重叠检测 (Collision & Overlap Detection)**
+    你必须智能地判断元素重叠是“设计意图”还是“布局事故”。
+
+    * **允许的层叠 (Intentional Layering)**:
+        * **特征**: 通常涉及不同类型的元素（如文字在形状上），且`z_index`明确定义了层级关系。
+        * **你的行动**: **保留并尊重**这种设计。但要检查上层文本是否清晰可读，如果背景过于花哨导致文字看不清，你需要主动为文字背景添加一个半透明的深色或浅色衬底（一个`shape`元素）来保证可读性。
+
+    * **不允许的碰撞 (Unintentional Collision)**:
+        * **特征**: 两个同类元素（如两个文本框）互相重叠；关键信息（如标题）被图片部分遮挡；元素间距过小，显得拥挤不堪。
+        * **你的行动**: 必须修正！
+
+    #### **B. 文本溢出预判与修正 (Text Overflow Prediction & Correction)**
+    **不要相信原始的 `height` 值！** 你必须基于 `content`, `font.size`, 和 `width` 智能预估文本渲染后的实际高度。
+
+    * **预估方法**: 一个18号字，在400宽的盒子里，每行大约能放20个中文字。用这个方法估算出行数，再乘以 `fontSize * 1.5` 得到渲染高度。
+    * **修正策略**:
+        1.  **首先，尝试增加 `height`**: 这是最直接的方法。
+        2.  **其次，移动下方元素**: 如果增加高度会导致新的碰撞，则**整体下移**被碰撞的元素，保持原有的垂直间距。
+
+    #### **C. 对齐与分布 (Alignment & Distribution)**
+    专业感源于秩序。这是**必须执行**的步骤。
+
+    1.  **对齐检查**: 寻找页面中可以建立“对齐线”的元素。例如，左侧的图片和下方的文本块，它们的左边缘是否对齐了？标题和正文是否左对齐？
+    2.  **分布检查**: 如果有一组横向或纵向排列的元素（如三个卖点介绍），检查它们之间的**间距是否完全相等**。
+    3.  **修正策略**: **果断地修改`x`, `y`坐标**，让元素严格对齐或等距分布。允许你进行±20像素范围内的精细调整。
+
+    ---
+    ### **第三阶段：最终美学审查 (Final Aesthetic Review)**
+    在完成所有技术和布局修正后，退后一步，像审视一幅画一样审视整个页面。
+
+    1.  **视觉平衡 (Visual Balance)**: 页面的“视觉重量”是否均衡？有没有头重脚轻，或者所有元素都挤在左上角？**你的行动**: 如果不平衡，请大胆地移动元素，甚至可以整体移动一组元素，以达到视觉上的和谐。
+    2.  **留白与呼吸感 (White Space & Breathability)**: 页面是否塞得过满？元素之间是否有足够的“呼吸空间”？**你的行动**: 如果过于拥挤，可以适当缩小某些非核心元素（如装饰性形状或图片）的 `width` 和 `height`，或者增加元素间距。
+    3.  **视觉焦点 (Focal Point)**: 这一页的视觉焦点是什么？是标题，还是核心图片？这个焦点是否足够突出？**你的行动**: 如果焦点不明确，可以适当**加粗或微调字号**来强调核心标题，或者给核心图片增加一个微妙的边框或阴影效果（通过增加`shape`元素实现）。
+
+    ---
+    ### **输出指令**
+    * **输入**: 一个可能存在各种问题的JSON草稿字符串。
+    * **输出**: **必须且只能**是一个经过你三轮严格审查和精心打磨后，达到出版级别的、完美的、单一的JSON对象。**绝对不要添加任何解释性文字或代码块标记。**
+
+    ---
+    **现在，请对以下JSON草稿进行你严苛的审查和修正：**
 
     ```json
     {slide_json_str}
     ```
     """
-    model = MODEL_CONFIG.get("inspector", MODEL_CONFIG.get("planner", "glm-4"))
-    return _call_ai(prompt, model)
+    model = MODEL_CONFIG.get("inspector", "glm-4")
+    # 质检员必须返回可解析的JSON，所以这里用回 _call_ai_and_parse_json
+    return _call_ai_and_parse_json(prompt, model)
+
+
+
+def _generate_slide_layout_with_retry(
+        page_content: dict,
+        design_system: dict,
+        all_pages_outline: list,
+        page_index: int,
+        total_pages: int,
+        aspect_ratio: str,
+        previous_slide_layout: Optional[Dict] = None,
+) -> dict | None:
+    """
+    [核心重构] 编排“生成草稿->送交质检”的完整流程，并集成重试逻辑。
+    """
+
+
+    canvas_width, canvas_height = (1024, 768) if aspect_ratio == "4:3" else (1280, 720)
+    for attempt in range(MAX_LAYOUT_RETRIES):
+        logging.info(f"  - 正在处理第 {page_index + 1} 页布局 (尝试 {attempt + 1}/{MAX_LAYOUT_RETRIES})...")
+        try:
+            # 步骤1: 先生成原始、可能不完美的字符串草稿
+            logging.info(f"    - (1/2) AI排版导演正在生成布局草稿...")
+            slide_layout_draft_str = _generate_slide_layout(
+                page_content,
+                design_system,
+                all_pages_outline,
+                page_index,
+                total_pages,
+                aspect_ratio,
+                previous_slide_layout,
+            )
+
+            # 如果第一步就失败了（比如API不通），直接进入下一次重试
+            if not slide_layout_draft_str:
+                logging.warning(f"    - (1/2) AI排版导演未能生成草稿，将在等待后重试。")
+                time.sleep(2 * (attempt + 1))
+                continue
+
+            logging.info(f"    - (2/2) 草稿已生成，送往AI首席视觉官进行审查和修正...")
+            # 步骤2: 将原始草稿（无论好坏）送交“质检员”进行修正和解析
+            corrected_layout = _validate_and_correct_slide_layout(
+                slide_layout_draft_str,
+                canvas_width,
+                canvas_height
+            )
+
+            # 成功条件：质检员成功返回了一个有效的、修正后的JSON对象
+            if corrected_layout and "elements" in corrected_layout:
+                logging.info(f"  - 第 {page_index + 1} 页布局处理成功。")
+                return corrected_layout
+
+            logging.warning(f"  - (2/2) AI首席视觉官未能修正或返回有效布局。")
+
+        except Exception as e:
+            logging.error(f"  - 处理第 {page_index + 1} 页布局时发生意外异常: {e}", exc_info=True)
+
+        # 如果不是最后一次尝试，则等待一段时间后重试
+        if attempt < MAX_LAYOUT_RETRIES - 1:
+            wait_time = (attempt + 1) * 2
+            logging.info(f"  - 将在 {wait_time} 秒后重试...")
+            time.sleep(wait_time)
+
+        logging.error(f"  - 经过 {MAX_LAYOUT_RETRIES} 次尝试后，仍无法为第 {page_index + 1} 页生成有效布局。")
+        return None  # 所有尝试均告失败
+
+# --- [最终版] 主函数：编排“拥有案例手册的专家流水线” ---
 
 def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str = "16:9") -> dict | None:
     """
-    最终版流水线，集成了AI质检员。
+    [V3 健壮版] 最终版流水线，采用串行上下文感知+草稿送审机制。
     """
-    logging.info("--- 开始AI专家流水线生成任务 (带AI质检员) ---")
+    logging.info("--- 开始AI专家流水线生成任务 (V3 - 上下文感知+草稿送审) ---")
 
-    # 阶段一、二保持不变...
+    # 阶段一、二保持不变
     design_system = _generate_design_system(theme)
     if not design_system: return None
     content_outline = _generate_content_outline(theme, num_pages)
     if not content_outline or 'pages' not in content_outline: return None
 
-    final_pages: List[Optional[Dict[str, Any]]] = [None] * len(content_outline['pages'])
+    all_pages_content = content_outline['pages']
+    final_pages: List[Optional[Dict[str, Any]]] = [None] * len(all_pages_content)
     canvas_width, canvas_height = (1024, 768) if aspect_ratio == "4:3" else (1280, 720)
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_index = {
-            executor.submit(
-                _generate_slide_layout_with_retry,
-                page_content, design_system, content_outline['pages'],
-                i, len(content_outline['pages']), aspect_ratio
-            ): i for i, page_content in enumerate(content_outline['pages'])
-        }
+    # 串行循环，维持上下文
+    previous_slide_layout = None
+    for i, page_content in enumerate(all_pages_content):
+        # [核心修改] 调用重构后的、包含完整“生成-修正”流程的函数
+        final_layout = _generate_slide_layout_with_retry(
+            page_content=page_content,
+            design_system=design_system,
+            all_pages_outline=all_pages_content,
+            page_index=i,
+            total_pages=len(all_pages_content),
+            aspect_ratio=aspect_ratio,
+            previous_slide_layout=previous_slide_layout,
+        )
 
-        for future in as_completed(future_to_index):
-            index = future_to_index[future]
-            try:
-                slide_layout_draft = future.result()
+        if final_layout:
+            final_pages[i] = final_layout
+            previous_slide_layout = final_layout  # 更新上下文为最终修正后的版本
+        else:
+            # 容错逻辑：如果重试多次后仍然失败，则创建一个错误提示页面
+            logging.error(f"  - 第 {i + 1} 页布局生成永久失败，将使用错误提示页。")
+            error_page = {
+                "layout_type": "fallback_error",
+                "elements": [{
+                    "id": "error_text", "type": "text_box", "content": f"页面 {i + 1}\n生成失败",
+                    "x": int(canvas_width * 0.1), "y": int(canvas_height * 0.4),
+                    "width": int(canvas_width * 0.8), "height": int(canvas_height * 0.2),
+                    "style": {"font": {"type": "heading", "size": 48, "color": "#E53935", "bold": True},
+                              "alignment": "CENTER"}
+                }]
+            }
+            final_pages[i] = error_page
+            previous_slide_layout = error_page # 即使失败，也更新上下文，避免好坏页交错
 
-                if slide_layout_draft:
-                    logging.info(f"  - 第 {index + 1} 页：布局草稿已生成，送往AI质检员进行审核...")
-
-                    # [核心改造] 将草稿送往AI质检员进行修正
-                    corrected_layout = _validate_and_correct_slide_layout(
-                        json.dumps(slide_layout_draft, ensure_ascii=False),
-                        canvas_width,
-                        canvas_height
-                    )
-
-                    if corrected_layout:
-                        logging.info(f"  - 第 {index + 1} 页：AI质检完成并已修正。")
-                        final_pages[index] = corrected_layout
-                    else:
-                        logging.warning(f"  - 第 {index + 1} 页：AI质检失败，保留原始草稿。")
-                        final_pages[index] = slide_layout_draft  # 如果质检失败，保留原始版本
-                else:
-                    # 容错逻辑不变...
-                    logging.error(f"  - 第 {index + 1} 页布局生成永久失败，将使用错误提示页。")
-                    final_pages[index] = {
-                        "layout_type": "fallback_error",
-                        "elements": [{
-                            "id": "error_text", "type": "text_box", "content": f"页面 {index + 1}\n生成失败",
-                            "x": int(canvas_width * 0.1), "y": int(canvas_height * 0.4),
-                            "width": int(canvas_width * 0.8), "height": int(canvas_height * 0.2),
-                            "style": {"font": {"type": "heading", "size": 48, "color": "#E53935", "bold": True},
-                                      "alignment": "CENTER"}
-                        }]
-                    }
-            except Exception as exc:
-                logging.error(f"  - 处理第 {index + 1} 页的设计结果时发生严重错误: {exc}", exc_info=True)
-                final_pages[index] = {
-                    "layout_type": "fallback_error",
-                    "elements": [
-                        {"type": "text_box", "content": f"页面 {index + 1} 处理异常", "x": 100, "y": 100,
-                         "width": 1080,
-                         "height": 100, "style": {"font": {"type": "heading", "size": 36, "color": "#E53935"}}}]
-                }
-
-    # 组装最终计划的逻辑不变...
+    # 组装最终计划
     if all(p is None for p in final_pages):
         logging.error("所有页面布局均生成失败，任务中止。")
         return None
@@ -621,7 +693,6 @@ def generate_presentation_pipeline(theme: str, num_pages: int, aspect_ratio: str
     }
     logging.info("--- AI专家流水线任务全部完成 ---")
     return final_plan
-
 
 # --- 无缝切换接口 ---
 generate_presentation_plan = generate_presentation_pipeline
