@@ -22,18 +22,21 @@ except ValueError as e:
 
 
 def _extract_json_from_response(text: str) -> str | None:
-    # 辅助函数，用于从可能包含杂质的文本中提取出JSON部分
+    # ... (此辅助函数保持不变) ...
     try:
-        # 寻找第一个 '{' 和最后一个 '}'
+        text = re.sub(r'```json\s*', '', text, flags=re.IGNORECASE)
+        text = re.sub(r'```', '', text)
         start_index = text.find('{')
         end_index = text.rfind('}')
         if start_index != -1 and end_index != -1 and end_index > start_index:
             json_block = text[start_index:end_index + 1]
+            json_block = re.sub(r'//.*', '', json_block)
+            json_block = re.sub(r'/\*.*?\*/', '', json_block, flags=re.DOTALL)
             return json_block
         logging.warning("在AI响应中未找到有效的JSON对象边界。")
         return None
     except Exception as e:
-        logging.error(f"提取JSON时出错: {e}")
+        logging.error(f"提取和清理JSON时出错: {e}")
         return None
 
 
@@ -52,7 +55,7 @@ def _call_ai_and_parse_json(prompt: str, model_name: str) -> dict | None:
             ],
             temperature=0.6,
         )
-        response_content = response.choices[0].message.content
+        response_content = _extract_json_from_response(response.choices[0].message.content)
         if response_content:
             return json.loads(response_content) # 直接加载，因为开启了JSON模式
         logging.error("AI响应内容为空。")
